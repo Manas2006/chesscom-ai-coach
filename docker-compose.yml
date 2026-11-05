@@ -1,0 +1,13 @@
+services:
+  coach:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - coach-cache:/app/.cache
+
+volumes:
+  coach-cache:

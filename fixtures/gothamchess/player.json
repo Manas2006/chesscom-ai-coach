@@ -1,0 +1,12 @@
+{
+  "source": "https://api.chess.com/pub/player/gothamchess and /stats (fetched 2026-11-05)",
+  "profile": {"username": "gothamchess", "name": "Levy Rozman", "title": "IM", "avatar": "https://images.chesscomfiles.com/uploads/v1/user/33945736.eb0c3771.200x200o.cf06060d2143.png", "url": "https://www.chess.com/member/GothamChess", "followers": 209750, "joined": 1489454915, "status": "premium", "country": "https://api.chess.com/pub/country/ES"},
+  "stats": {
+    "chess_rapid": {"last": {"rating": 2453, "date": 1787860786, "rd": 49}, "best": {"rating": 2525, "date": 1599767699, "game": "https://www.chess.com/game/live/105646734171"}, "record": {"win": 96, "loss": 17, "draw": 4}},
+    "chess_blitz": {"last": {"rating": 2885, "date": 1793813087, "rd": 28}, "best": {"rating": 3014, "date": 1773352764, "game": "https://www.chess.com/game/live/167663411201"}, "record": {"win": 10587, "loss": 6393, "draw": 1280}},
+    "chess_bullet": {"last": {"rating": 2982, "date": 1793692455, "rd": 29}, "best": {"rating": 3123, "date": 1787248658, "game": "https://www.chess.com/game/live/147806764548"}, "record": {"win": 7696, "loss": 4805, "draw": 792}},
+    "chess_daily": {"last": {"rating": 1591, "date": 1793869176, "rd": 269}, "best": {"rating": 2124, "date": 1512968014, "game": "https://www.chess.com/game/daily/176171512"}, "record": {"win": 14, "loss": 2, "draw": 0, "time_per_move": 103011, "timeout_percent": 0}},
+    "tactics": {"highest": {"rating": 2821, "date": 1768865591}, "lowest": {"rating": 2748, "date": 1768865428}},
+    "puzzle_rush": {"best": {"total_attempts": 67, "score": 64}}
+  }
+}
