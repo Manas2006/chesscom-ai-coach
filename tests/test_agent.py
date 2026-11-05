@@ -6,15 +6,15 @@ from coach import agent
 from coach.llm import AnthropicProvider, LLMResponse, OpenAIProvider, ScriptedProvider, ToolCall
 
 
-def test_tool_loop_runs_engine_and_feeds_results_back(session, service, settings, g1_moment):
-    best = g1_moment["best"]
+def test_tool_loop_runs_engine_and_feeds_results_back(session, service, settings, crit):
+    ref, best = crit["ref"], crit["best"]
     provider = ScriptedProvider(
         [
-            LLMResponse(text="Let me check that.", tool_calls=[ToolCall("t1", "evaluate_move", {"ref": "G1 22...Qc7", "move": best})]),
-            LLMResponse(text=f"Yes: in [[G1 22...Qc7]] the engine's choice was {best}, which keeps your edge."),
+            LLMResponse(text="Let me check that.", tool_calls=[ToolCall("t1", "evaluate_move", {"ref": ref, "move": best})]),
+            LLMResponse(text=f"Yes: in [[{ref}]] the engine's choice was {best}, which keeps your edge."),
         ]
     )
-    out = agent.chat(session, provider, service.pool, settings, f"Was {best} better than Qc7 in G1?")
+    out = agent.chat(session, provider, service.pool, settings, f"Was {best} better in {ref}?")
     assert out["trace"][0]["tool"] == "evaluate_move"
     assert "this IS the engine's top choice" in out["trace"][0]["result"]
     # the tool result was sent back to the model as a tool message
@@ -24,19 +24,19 @@ def test_tool_loop_runs_engine_and_feeds_results_back(session, service, settings
     assert session.chat_history[-1]["role"] == "assistant"
 
 
-def test_verifier_triggers_one_repair_pass(session, service, settings, g1_moment):
+def test_verifier_triggers_one_repair_pass(session, service, settings, crit):
     provider = ScriptedProvider(
         [
-            LLMResponse(text="In [[G1 22...Qd7]] you should have played Nxh8."),
-            LLMResponse(text=f"In [[G1 22...Qc7]] the engine preferred {g1_moment['best']}."),
+            LLMResponse(text=f"In [[{crit['wrong_ref']}]] you should have played {crit['invented']}."),
+            LLMResponse(text=f"In [[{crit['ref']}]] the engine preferred {crit['best']}."),
         ]
     )
-    out = agent.chat(session, provider, service.pool, settings, "What went wrong in G1?")
+    out = agent.chat(session, provider, service.pool, settings, "What went wrong?")
     assert out["repaired"] is True
     assert out["verification_before_repair"]["score"] < 1.0
     assert out["verification"]["score"] == 1.0
     repair_prompt = provider.calls[1]["history"][-1]["text"]
-    assert "Nxh8" in repair_prompt and "22...Qc7" in repair_prompt
+    assert crit["invented"] in repair_prompt and crit["label"] in repair_prompt
 
 
 def test_illegal_tool_input_is_reported_not_raised(session, service, settings):

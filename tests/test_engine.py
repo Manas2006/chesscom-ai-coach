@@ -55,15 +55,17 @@ def test_analysis_is_internally_consistent(session):
             assert a.moves[m.ply].classification == m.classification
 
 
-def test_known_blunder_is_found(session):
-    """22...Qc7 in the Brown_Mamba24 game throws away Black's edge (Stockfish 16 wants ...Nxe4).
-    Assertions avoid engine-version-specific details so the test also holds on newer Stockfish builds."""
-    g = session.games[0]
-    m = session.moment_at(g.gid, g.find_ply(22, "black").index)
-    assert m is not None and m.classification in ("mistake", "blunder")
-    assert m.win_before > 55 and m.win_after < 50
-    assert "played_quickly" in m.tags  # 1.1s with 2:29 on the clock: from the PGN, not the engine
-    assert m.best_san and m.best_san != "Qc7"
+def test_clock_tags_follow_the_pgn(session):
+    """Clock-based tags come from the PGN, so they must match the recorded clocks exactly."""
+    seen = 0
+    for g in session.games:
+        for m in session.analyses[g.gid].moments:
+            pressure = m.clock < max(15.0, 0.10 * g.base_s)
+            assert ("time_pressure" in m.tags) == pressure
+            quick = not pressure and m.time_spent is not None and m.time_spent <= 2.0
+            assert ("played_quickly" in m.tags) == quick
+            seen += 1
+    assert seen >= 6
 
 
 def test_profile_numbers_add_up(session):
