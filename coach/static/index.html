@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Coach · AI chess coach for Chess.com players</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>♞</text></svg>" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Coach home"><span class="knight">♞</span> Coach <span class="for">for Chess.com players</span></a>
+    <div class="status" id="status"></div>
+  </header>
+
+  <main>
+    <!-- Landing -->
+    <section id="landing" class="landing">
+      <h1>Your games, reviewed by a coach who can't make things up.</h1>
+      <p class="lede">
+        Enter a Chess.com username. Stockfish analyses your recent games and finds the moments that cost you the most,
+        then an AI coach explains the patterns behind them and builds you a plan. Every move it mentions is checked against the engine.
+      </p>
+      <form id="analyze-form" class="analyze-form" autocomplete="off">
+        <input id="username" name="username" placeholder="Chess.com username" required minlength="2" maxlength="40" spellcheck="false" />
+        <select id="ngames" name="games" aria-label="Number of games">
+          <option value="5">Last 5 games</option>
+          <option value="10" selected>Last 10 games</option>
+          <option value="20">Last 20 games</option>
+        </select>
+        <select id="tclass" name="time_class" aria-label="Time control">
+          <option value="all">All time controls</option>
+          <option value="bullet">Bullet</option>
+          <option value="blitz">Blitz</option>
+          <option value="rapid">Rapid</option>
+          <option value="daily">Daily</option>
+        </select>
+        <button type="submit" class="btn primary">Analyse my games</button>
+      </form>
+      <p class="demo-line">No username handy? <button id="demo-btn" class="linkish" type="button">Try the offline demo with 6 of GothamChess's blitz games</button></p>
+      <div id="form-error" class="error hidden"></div>
+
+      <ol class="how">
+        <li><b>Fetch</b><span>Your latest games from the Chess.com Published Data API, with clock times.</span></li>
+        <li><b>Analyse</b><span>Stockfish evaluates every position, then re-checks your costliest moves more deeply and finds the opponent's punishing reply.</span></li>
+        <li><b>Coach</b><span>An LLM turns the verified facts into patterns and a 7-day plan. It can run Stockfish itself when you ask "what if?".</span></li>
+        <li><b>Verify</b><span>Every citation, move and evaluation in the answer is checked against the engine data. Anything unsupported is flagged.</span></li>
+      </ol>
+    </section>
+
+    <!-- Progress -->
+    <section id="progress" class="card progress hidden">
+      <div class="progress-head"><span id="progress-stage">Starting…</span><span id="progress-pct">0%</span></div>
+      <div class="bar"><div id="progress-bar"></div></div>
+      <p class="muted small" id="progress-note">Engine analysis takes about 2 to 4 seconds per game. Results are cached, so a second run is instant.</p>
+    </section>
+
+    <!-- Dashboard -->
+    <section id="dashboard" class="hidden">
+      <div class="player-row">
+        <div class="card player" id="player-card"></div>
+        <div class="tiles" id="tiles"></div>
+      </div>
+
+      <div class="main-grid">
+        <div class="left-col">
+          <div class="card report">
+            <div class="card-head">
+              <h2>Coach report</h2>
+              <div class="head-right">
+                <span id="grounding-badge"></span>
+                <button id="regen" class="btn ghost small" title="Generate a fresh report">Regenerate</button>
+              </div>
+            </div>
+            <div id="report-meta" class="muted small"></div>
+            <div id="report" class="md"></div>
+            <details id="grounding-details" class="grounding hidden"><summary>How this report was checked</summary><div id="grounding-body"></div></details>
+          </div>
+
+          <div class="card chat">
+            <div class="card-head"><h2>Ask your coach</h2><span class="muted small">Answers can run Stockfish on demand</span></div>
+            <div id="chat-log" class="chat-log"></div>
+            <div id="chat-suggestions" class="suggestions"></div>
+            <form id="chat-form" class="chat-form">
+              <input id="chat-input" placeholder="e.g. What if I had played Nxe4 in G1 instead of Qc7?" maxlength="2000" autocomplete="off" />
+              <button class="btn primary" type="submit">Send</button>
+            </form>
+          </div>
+        </div>
+
+        <div class="right-col">
+          <div class="card board-card" id="board-card">
+            <div class="game-tabs" id="game-tabs"></div>
+            <div class="game-info" id="game-info"></div>
+            <div class="board-wrap"><img id="board" alt="Chess board" width="400" height="400" /></div>
+            <div class="board-caption" id="board-caption"></div>
+            <div class="nav">
+              <button class="btn ghost" data-nav="start" title="Start (Home)">⏮</button>
+              <button class="btn ghost" data-nav="prev" title="Previous (←)">◀</button>
+              <button class="btn ghost" data-nav="next" title="Next (→)">▶</button>
+              <button class="btn ghost" data-nav="end" title="End (End)">⏭</button>
+            </div>
+            <div class="eval-graph" id="eval-graph"></div>
+            <div class="moves" id="moves"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Critical moments</h2><span class="muted small">Your costliest moves, re-checked by a deeper search. Red arrow: what you played. Green: the engine's choice.</span></div>
+        <div class="moments" id="moments"></div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="card"><h3>Accuracy by phase</h3><div id="phases"></div></div>
+        <div class="card"><h3>Recurring patterns</h3><div id="patterns"></div></div>
+        <div class="card"><h3>Openings</h3><div id="openings"></div></div>
+      </div>
+      <p class="footnote muted small" id="footnote"></p>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

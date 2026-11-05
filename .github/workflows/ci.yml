@@ -1,0 +1,50 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Stockfish
+        run: sudo apt-get update && sudo apt-get install -y stockfish
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+      - name: Tests
+        env:
+          STOCKFISH_PATH: /usr/games/stockfish
+        run: pytest -q
+      - name: Eval harness (dry run, no API key)
+        env:
+          STOCKFISH_PATH: /usr/games/stockfish
+        run: python -m evals.run_eval --dry-run
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start (the one-command path from the README)
+        run: docker compose up --build -d
+      - name: Tests inside the image
+        run: docker compose exec -T coach pytest -q
+      - name: Analyse the offline demo over HTTP
+        run: |
+          for i in $(seq 1 30); do curl -sf localhost:8000/api/health && break; sleep 2; done
+          JOB=$(curl -sf -X POST localhost:8000/api/analyze -H 'content-type: application/json' \
+            -d '{"username":"gothamchess","games":6,"demo":true}' | python3 -c 'import sys,json; print(json.load(sys.stdin)["job_id"])')
+          for i in $(seq 1 120); do
+            S=$(curl -sf localhost:8000/api/jobs/$JOB); echo "$S"
+            echo "$S" | grep -q '"status":"done"' && exit 0
+            echo "$S" | grep -q '"status":"error"' && exit 1
+            sleep 2
+          done
+          exit 1
+      - name: Logs
+        if: always()
+        run: docker compose logs
