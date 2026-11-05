@@ -27,6 +27,21 @@ def service(settings):
 
 
 @pytest.fixture(scope="session")
+def g1_moment(session):
+    """22...Qc7 in G1 (a mistake in every Stockfish version we tried) plus engine-derived moves around it, so
+    tests never hard-code one engine version's preferences."""
+    import chess
+
+    g = session.games[0]
+    m = session.moment_at(g.gid, g.find_ply(22, "black").index)
+    assert m is not None
+    top = {l.san[0] for l in m.best_lines if l.san}
+    board = chess.Board(m.fen_before)
+    outsider = next(board.san(mv) for mv in board.legal_moves if board.san(mv) not in top and board.san(mv) != m.played_san and "x" not in board.san(mv) and "+" not in board.san(mv))
+    return {"ref": m.ref, "best": m.best_san, "outsider": outsider, "moment": m}
+
+
+@pytest.fixture(scope="session")
 def session(service):
     """The offline demo: 6 real GothamChess blitz games, analysed once for the whole test run."""
     job = service.start("gothamchess", 6, "all", demo=True)

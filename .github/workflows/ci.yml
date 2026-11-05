@@ -32,7 +32,11 @@ jobs:
       - name: Build and start (the one-command path from the README)
         run: docker compose up --build -d
       - name: Tests inside the image
-        run: docker compose exec -T coach python -m pytest -q
+        run: |
+          docker compose exec -T coach stockfish quit | head -1 || true
+          docker compose exec -T coach python -m pytest -q -p no:cacheprovider --tb=line > pytest.log 2>&1 \
+            || { cat pytest.log; grep -E "Error|assert|FAILED|^/" pytest.log | tail -8 | sed 's/^/::error::/'; exit 1; }
+          tail -3 pytest.log
       - name: Analyse the offline demo over HTTP
         run: |
           for i in $(seq 1 30); do curl -sf localhost:8000/api/health && break; sleep 2; done
