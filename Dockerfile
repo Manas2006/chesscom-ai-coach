@@ -12,7 +12,7 @@ ENV STOCKFISH_PATH=/usr/games/stockfish \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
-COPY requirements.txt .
+COPY requirements.txt pyproject.toml ./
 RUN pip install --no-cache-dir -r requirements.txt pytest
 
 COPY coach ./coach

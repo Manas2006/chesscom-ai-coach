@@ -56,12 +56,14 @@ def test_analysis_is_internally_consistent(session):
 
 
 def test_known_blunder_is_found(session):
-    """22...Qc7 in the Brown_Mamba24 game drops the advantage; Stockfish wants ...Nxe4."""
+    """22...Qc7 in the Brown_Mamba24 game throws away Black's edge (Stockfish 16 wants ...Nxe4).
+    Assertions avoid engine-version-specific details so the test also holds on newer Stockfish builds."""
     g = session.games[0]
     m = session.moment_at(g.gid, g.find_ply(22, "black").index)
-    assert m is not None
-    assert m.best_san == "Nxe4"
-    assert "best_was_capture" in m.tags and "played_quickly" in m.tags
+    assert m is not None and m.classification in ("mistake", "blunder")
+    assert m.win_before > 55 and m.win_after < 50
+    assert "played_quickly" in m.tags  # 1.1s with 2:29 on the clock: from the PGN, not the engine
+    assert m.best_san and m.best_san != "Qc7"
 
 
 def test_profile_numbers_add_up(session):
