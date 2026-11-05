@@ -6,8 +6,8 @@ def _v(session, text, evidence=None):
     return verify(text, session, build_context(session), evidence)
 
 
-def test_valid_citation_and_engine_endorsed_recommendation(session):
-    r = _v(session, "In [[G1 22...Qc7]] you moved too fast. The engine preferred Nxe4, winning a pawn.")
+def test_valid_citation_and_engine_endorsed_recommendation(session, g1_moment):
+    r = _v(session, f"In [[G1 22...Qc7]] you moved too fast. The engine preferred {g1_moment['best']} instead.")
     assert r["citations"] == {"total": 1, "ok": 1, "failures": []}
     assert r["moves"]["ok"] == r["moves"]["total"] >= 1
     assert r["recommendations"]["ok"] == 1
@@ -37,18 +37,20 @@ def test_recommending_a_move_from_nowhere_is_flagged(session):
     assert "Qh5" in r["flagged"]
 
 
-def test_bad_recommendation_is_flagged_even_if_legal(session):
-    # Kh8 is legal before 22...Qc7 but it is not among the engine's top choices
-    r = _v(session, "In [[G1 22...Qc7]] the best move was Kh8.")
+def test_bad_recommendation_is_flagged_even_if_legal(session, g1_moment):
+    # a legal move that is not among the engine's top choices
+    bad = g1_moment["outsider"]
+    r = _v(session, f"In [[G1 22...Qc7]] the best move was {bad}.")
     assert r["moves"]["failures"] == []
-    assert r["recommendations"]["failures"] == ["Kh8"]
+    assert r["recommendations"]["failures"] == [bad]
 
 
-def test_tool_checked_recommendation_is_accepted(session):
+def test_tool_checked_recommendation_is_accepted(session, g1_moment):
     g = session.games[0]
     ply = g.find_ply(22, "black")
-    ev = Evidence(endorsed={(ply.fen_before, "Kh8")})
-    r = _v(session, "In [[G1 22...Qc7]] the best move was Kh8.", ev)
+    bad = g1_moment["outsider"]
+    ev = Evidence(endorsed={(ply.fen_before, bad)})
+    r = _v(session, f"In [[G1 22...Qc7]] the best move was {bad}.", ev)
     assert r["recommendations"]["failures"] == []
 
 
