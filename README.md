@@ -1,5 +1,7 @@
 # Coach: an engine-grounded AI chess coach for Chess.com players
 
+[![ci](https://github.com/Manas2006/chesscom-ai-coach/actions/workflows/ci.yml/badge.svg)](https://github.com/Manas2006/chesscom-ai-coach/actions/workflows/ci.yml)
+
 Enter a Chess.com username. Stockfish analyses your recent games and finds the moves that cost you the most, an LLM explains the patterns behind them and builds a 7-day plan, and **every move, citation and evaluation the LLM writes is checked against the engine before you see it.**
 
 ![Dashboard](docs/screenshots/dashboard.png)
