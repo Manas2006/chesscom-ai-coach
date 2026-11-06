@@ -44,7 +44,7 @@ def test_analysis_is_internally_consistent(session):
             ply = g.plies[m.ply]
             assert m.color == g.player_color, "critical moments are only the coached player's moves"
             assert m.played_san == ply.san and m.ref == f"{g.gid} {ply.label}"
-            assert m.win_drop >= 5 and m.classification in ("inaccuracy", "mistake", "blunder")
+            assert m.win_drop >= 5 and m.classification in ("inaccuracy", "mistake", "miss", "blunder")
             board = chess.Board(m.fen_before)
             for line in m.best_lines:  # every engine line replays legally
                 b = board.copy()
@@ -78,6 +78,7 @@ def test_profile_numbers_add_up(session):
     by_phase = p["errors"]["by_phase"]
     assert totals["blunder"] == sum(v["blunders"] for v in by_phase.values())
     assert totals["mistake"] == sum(v["mistakes"] for v in by_phase.values())
+    assert totals["miss"] == sum(v["misses"] for v in by_phase.values())
     assert p["ratings"]["blitz"]["current"] == 2885
 
 
@@ -92,3 +93,23 @@ def test_analysis_is_reproducible(service, settings):
     runs = [analyse_game(service.pool, g, settings.engine_depth, settings.deep_nodes, settings.refutation_nodes) for _ in range(2)]
     sig = [[(m.ref, m.best_san, m.eval_before, m.eval_after, tuple(m.tags)) for m in r.moments] for r in runs]
     assert sig[0] == sig[1]
+
+
+def test_miss_means_failing_to_punish_an_error():
+    from coach.engine import MoveAnalysis, label_misses
+
+    def mv(ply, cls):
+        return MoveAnalysis(ply, "white" if ply % 2 == 0 else "black", f"{ply}", "e4", 50, 40, 10, "", "", None, cls, 50, "middlegame")
+
+    moves = [mv(0, "good"), mv(1, "blunder"), mv(2, "mistake"), mv(3, "good"), mv(4, "blunder"), mv(5, "inaccuracy"), mv(6, "mistake")]
+    assert label_misses(moves) == [2]
+    assert [m.classification for m in moves] == ["good", "blunder", "miss", "good", "blunder", "inaccuracy", "mistake"]
+
+
+def test_misses_carry_the_punish_tag(session):
+    for g in session.games:
+        a = session.analyses[g.gid]
+        for m in a.moments:
+            if m.classification == "miss":
+                assert m.tags[0] == "missed_punish"
+                assert a.moves[m.ply - 1].classification in ("mistake", "blunder", "miss")

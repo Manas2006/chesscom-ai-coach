@@ -1,7 +1,7 @@
 "use strict";
 
 const $ = (s, el = document) => el.querySelector(s);
-const state = { sid: null, data: null, gid: null, ply: -1, mode: "after", health: null, tab: "coach" };
+const state = { sid: null, data: null, gid: null, ply: -1, mode: "after", health: null, tab: "coach", pz: null, puzzles: null, solved: new Set(), revealed: new Set() };
 const CITE_RE = /\[\[\s*(G\d+\s+\d+\s*(?:\.\.\.|\.)\s*[^\]\s]+)\s*\]\]/g;
 
 /* Game Review vocabulary. Glyphs are standard chess annotation symbols. */
@@ -11,9 +11,10 @@ const CLS = {
   good: { sym: "✓", text: "is good" },
   inaccuracy: { sym: "?!", text: "is an inaccuracy" },
   mistake: { sym: "?", text: "is a mistake" },
+  miss: { sym: "✗", text: "is a miss" },
   blunder: { sym: "??", text: "is a blunder" },
 };
-const NOTABLE = new Set(["inaccuracy", "mistake", "blunder"]);
+const NOTABLE = new Set(["inaccuracy", "mistake", "miss", "blunder"]);
 const FIG = { K: "♚", Q: "♛", R: "♜", B: "♝", N: "♞" };
 const REASONS = {
   checkmated: "by checkmate", resigned: "by resignation", timeout: "on time", abandoned: "by abandonment",
@@ -39,6 +40,31 @@ async function api(path, opts = {}) {
   if (!r.ok) throw new Error(body.detail || `HTTP ${r.status}`);
   return body;
 }
+
+/* POST that returns server-sent events; calls onEvent for each {type: ...} message. */
+async function streamPost(path, body, onEvent) {
+  const r = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  if (!r.ok) {
+    const b = await r.json().catch(() => ({}));
+    throw new Error(b.detail || `HTTP ${r.status}`);
+  }
+  const reader = r.body.getReader(), dec = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf("\n\n")) >= 0) {
+      const chunk = buf.slice(0, i);
+      buf = buf.slice(i + 2);
+      for (const line of chunk.split("\n")) if (line.startsWith("data:")) onEvent(JSON.parse(line.slice(5)));
+    }
+  }
+}
+
+const toolLabel = (ev) => `Checking with Stockfish: ${ev.name}(${Object.values(ev.args || {}).join(", ")})`;
+const statusHtml = (text) => `<span class="status-line"><span class="spinner"></span>${esc(text)}</span>`;
 
 /* ------------------------------------------------------------------ status */
 async function loadHealth() {
@@ -131,7 +157,7 @@ function renderDashboard() {
   $("#tiles").innerHTML = [
     tile("Record", `${r.win}W ${r.loss}L ${r.draw}D`, `score ${smp.score ?? "n/a"}%`),
     tile("Accuracy", acc.overall ?? "n/a", acc.chesscom_avg != null ? `Chess.com Game Review avg ${acc.chesscom_avg}` : "engine accuracy (this app)"),
-    tile("Mistakes / game", err.mistake, `${err.inaccuracy} inaccuracies / game`),
+    tile("Mistakes / game", err.mistake, `plus ${err.miss} misses and ${err.inaccuracy} inaccuracies / game`),
     tile("Blunders / game", err.blunder, `${p.time.played_quickly} of ${p.time.serious_errors} costly moves made in 2s or less`),
   ].join("");
 
@@ -204,6 +230,8 @@ function renderStats() {
 
 /* ------------------------------------------------------------------ tabs */
 function setTab(tab) {
+  if (state.tab === "practice" && tab !== "practice" && state.mode === "puzzle") selectGame(state.gid, state.ply, "decision");
+  if (tab === "practice") openPractice();
   state.tab = tab;
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === tab));
   document.querySelectorAll(".tab-body").forEach((b) => b.classList.toggle("hidden", b.dataset.body !== tab));
@@ -229,6 +257,10 @@ function gotoRef(ref, scroll) {
 function selectGame(gid, ply, mode) {
   const g = game(gid);
   const changed = state.gid !== gid;
+  if (mode !== "puzzle" && state.tab === "practice") {
+    state.tab = null; // navigating the game leaves practice mode
+    setTab("moves");
+  }
   state.gid = gid;
   state.ply = Math.max(-1, Math.min(ply, g.plies.length - 1));
   state.mode = mode || "after";
@@ -251,7 +283,7 @@ function clockAt(g, color, ply) {
 }
 
 // Index of the last ply already played in the position shown on the board.
-const shownPly = () => (state.mode === "decision" ? state.ply - 1 : state.ply);
+const shownPly = () => (state.mode === "decision" || state.mode === "puzzle" ? state.ply - 1 : state.ply);
 
 function playerBar(g, color, isYou) {
   const name = color === "white" ? g.white : g.black;
@@ -268,12 +300,20 @@ function playerBar(g, color, isYou) {
 function renderPosition() {
   const g = game(state.gid);
   const you = g.player_color, opp = you === "white" ? "black" : "white";
-  $("#board").src = `/api/sessions/${state.sid}/board.svg?game=${g.gid}&ply=${state.ply}&mode=${state.mode}&size=560`;
+  let src = `/api/sessions/${state.sid}/board.svg?game=${g.gid}&ply=${state.ply}&mode=${state.mode}&size=560`;
+  if (state.mode === "puzzle" && state.pz) {
+    const z = state.pz;
+    if (z.attempt) src += `&attempt=${z.attempt}${z.reply ? `&reply=${z.reply}` : ""}`;
+    else if (z.reveal) src += `&reveal=${z.reveal}`;
+    if (z.mark && !z.attempt) src += `&mark=${z.mark}`;
+  }
+  $("#board").src = src;
   $("#pbar-top").innerHTML = playerBar(g, opp, false);
   $("#pbar-bottom").innerHTML = playerBar(g, you, true);
   renderCoords(g);
   renderBadge(g);
   renderEvalBar(g);
+  renderGrid(g);
   renderGraph(g);
   renderExplainer(g);
   document.querySelectorAll("#moves .mv").forEach((el) => el.classList.toggle("cur", +el.dataset.ply === state.ply));
@@ -314,6 +354,12 @@ function renderBadge(g) {
 }
 
 function renderEvalBar(g) {
+  if (state.mode === "puzzle") {
+    // no spoilers while solving
+    $("#evalbar-fill").style.height = "50%";
+    $("#evalbar-score").textContent = "?";
+    return;
+  }
   const i = shownPly() + 1;
   const win = g.win_curve[i];
   const label = g.eval_curve[i] || "";
@@ -381,8 +427,16 @@ function renderExplainer(g) {
   if (m?.tag_notes.length) lines.push(esc(m.tag_notes.map(cap).join(". ")) + ".");
   if (m?.refutation?.san.length) lines.push(`Punishing line: ${esc(m.refutation.san.join(" "))}.`);
   if (p.time_spent != null) lines.push(`<span class="muted">${p.time_spent}s spent · ${fmtClock(p.clock)} left</span>`);
-  el.innerHTML = `${ico(c)}<div><div class="t"><span class="c-${c}">${esc(p.san)} ${CLS[c].text}</span></div><div class="d">${lines.join(" ")}</div></div>`;
+  const ref = `${g.gid} ${p.label}`;
+  const q = `Explain ${ref} to me: why ${p.san} ${CLS[c].text}, and what should I learn from it?`;
+  const llm = !!state.health?.llm.provider;
+  el.innerHTML = `${ico(c)}<div><div class="t"><span class="c-${c}">${esc(p.san)} ${CLS[c].text}</span></div><div class="d">${lines.join(" ")}</div>
+    <button class="btn ghost small explain" data-q="${esc(q)}" ${llm ? "" : 'disabled title="Add an API key to enable the AI coach"'}>Ask the coach about this move</button></div>`;
 }
+$("#explainer").addEventListener("click", (e) => {
+  const b = e.target.closest(".explain");
+  if (b && !b.disabled) sendChat(b.dataset.q);
+});
 
 function sanHtml(san, color) {
   const f = FIG[san[0]];
@@ -520,12 +574,28 @@ function traceHtml(trace) {
 async function loadReport(refresh) {
   const n = state.data.moments.length;
   $("#report").innerHTML = '<div class="skeleton" style="width:60%"></div><div class="skeleton"></div><div class="skeleton" style="width:85%"></div><div class="skeleton" style="width:40%;margin-top:22px"></div><div class="skeleton"></div><div class="skeleton" style="width:75%"></div>';
-  $("#report-meta").textContent = state.health?.llm.provider ? `Your coach is reviewing ${n} key moments… (usually 15 to 40 seconds)` : "";
+  $("#report-meta").innerHTML = state.health?.llm.provider ? statusHtml(`Your coach is reviewing ${n} key moments…`) : "";
   $("#grounding-badge").innerHTML = "";
   $("#grounding-details").classList.add("hidden");
   $("#regen").disabled = true;
+  let draft = "", frame = 0;
+  const paint = () => {
+    frame = 0;
+    $("#report").innerHTML = `<div class="caret">${renderMarkdown(draft)}</div>`;
+  };
   try {
-    renderReport(await api(`/api/sessions/${state.sid}/report${refresh ? "?refresh=true" : ""}`, { method: "POST" }));
+    await streamPost(`/api/sessions/${state.sid}/report/stream${refresh ? "?refresh=true" : ""}`, null, (ev) => {
+      if (ev.type === "round") draft = "";
+      else if (ev.type === "delta") {
+        draft += ev.text;
+        if (!frame) frame = requestAnimationFrame(paint);
+      } else if (ev.type === "tool") $("#report-meta").innerHTML = statusHtml(toolLabel(ev));
+      else if (ev.type === "status") $("#report-meta").innerHTML = statusHtml(ev.text);
+      else if (ev.type === "done") {
+        cancelAnimationFrame(frame);
+        renderReport(ev.result);
+      } else if (ev.type === "error") throw new Error(ev.message);
+    });
   } catch (e) {
     $("#report").innerHTML = `<div class="error">${esc(e.message)}</div>`;
   } finally {
@@ -551,6 +621,147 @@ $("#grounding-badge").onclick = () => ($("#grounding-details").open = !$("#groun
 document.addEventListener("click", (e) => {
   const c = e.target.closest(".cite");
   if (c) gotoRef(c.dataset.ref, window.innerWidth < 1100);
+});
+
+/* ------------------------------------------------------------------ practice */
+function fenSquares(fen) {
+  const out = {};
+  fen.split(" ")[0].split("/").forEach((row, r) => {
+    let f = 0;
+    for (const ch of row) {
+      if (/\d/.test(ch)) f += +ch;
+      else out[String.fromCharCode(97 + f++) + (8 - r)] = ch;
+    }
+  });
+  return out;
+}
+
+function squareAt(g, col, row) {
+  return g.player_color === "white" ? String.fromCharCode(97 + col) + (8 - row) : String.fromCharCode(104 - col) + (row + 1);
+}
+
+async function openPractice() {
+  if (!state.puzzles) {
+    try {
+      state.puzzles = await api(`/api/sessions/${state.sid}/puzzles`);
+    } catch (e) {
+      $("#pz-card").innerHTML = `<div class="fb no">${esc(e.message)}</div>`;
+      return;
+    }
+  }
+  if (!state.puzzles.length) {
+    $("#pz-card").innerHTML = `<div class="fb info">No mistakes to retry in these games.</div>`;
+    return;
+  }
+  const next = state.pz ? state.pz.idx : state.puzzles.findIndex((z) => !state.solved.has(z.ref));
+  startPuzzle(next < 0 ? 0 : next);
+}
+
+function startPuzzle(idx) {
+  const z = state.puzzles[idx];
+  state.pz = { idx, ref: z.ref, cur: z, sel: null, attempt: null, reply: null, reveal: null, mark: null, hint: 0, feedback: null, solvedNow: false };
+  state.squares = fenSquares(z.fen);
+  state.gid = null; // force selectGame to rebuild the move list for this game
+  selectGame(z.gid, z.ply, "puzzle");
+  renderPractice();
+}
+
+function renderPractice() {
+  const z = state.pz;
+  if (!z || !state.puzzles) return;
+  const p = z.cur, side = cap(p.to_move);
+  const solvedCount = state.puzzles.filter((x) => state.solved.has(x.ref)).length;
+  $("#pz-progress").textContent = `${solvedCount} / ${state.puzzles.length} solved`;
+  const fb = z.feedback ? `<div class="fb ${z.feedback.kind}">${z.feedback.html}</div>` : "";
+  const actions = [];
+  if (z.attempt && !z.solvedNow) actions.push(`<button class="btn primary small" data-pz="retry">Try again</button>`);
+  if (!z.solvedNow && !z.reveal) actions.push(`<button class="btn ghost small" data-pz="hint">${z.hint ? "Another hint" : "Hint"}</button>`);
+  if (!z.solvedNow && !z.reveal) actions.push(`<button class="btn ghost small" data-pz="reveal">Show solution</button>`);
+  if (z.idx < state.puzzles.length - 1) actions.push(`<button class="btn ${z.solvedNow || z.reveal ? "primary" : "ghost"} small" data-pz="next">Next mistake ▶</button>`);
+  $("#pz-card").innerHTML = `
+    <div class="prompt">${side} to move. Find a better move.</div>
+    <div class="sub">In ${esc(p.ref.split(" ")[0])} you played <b style="color:#fff">${esc(p.played_san)}</b>, ${ico(p.classification, true)} ${esc(p.classification)} (−${Math.round(p.win_drop)} pts). Click a piece, then its destination.</div>
+    ${fb}<div class="pz-actions">${actions.join("")}</div>`;
+  $("#pz-list").innerHTML = state.puzzles
+    .map((x, i) => {
+      const st = state.solved.has(x.ref) ? `<span class="st solved">✓ solved</span>` : state.revealed.has(x.ref) ? `<span class="st revealed">seen</span>` : "";
+      return `<button class="pz-item ${i === z.idx ? "cur" : ""}" data-i="${i}">${ico(x.classification, true)}<span>${esc(x.ref)}</span>${st}</button>`;
+    })
+    .join("");
+}
+
+$("#pz-card").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-pz]");
+  if (!b || !state.pz) return;
+  const z = state.pz, act = b.dataset.pz;
+  if (act === "retry") {
+    Object.assign(z, { attempt: null, reply: null, feedback: null, sel: null });
+  } else if (act === "next") {
+    return startPuzzle(z.idx + 1);
+  } else if (act === "hint" || act === "reveal") {
+    const level = act === "reveal" ? 3 : Math.min(z.hint + 1, 3);
+    const h = await api(`/api/sessions/${state.sid}/puzzles/hint`, { method: "POST", body: JSON.stringify({ ref: z.ref, level }) });
+    z.hint = h.level;
+    z.attempt = null;
+    z.reply = null;
+    if (h.square) z.mark = h.square;
+    if (h.best_uci) {
+      z.reveal = h.best_uci;
+      state.revealed.add(z.ref);
+    }
+    z.feedback = { kind: "info", html: esc(h.text) };
+  }
+  renderPractice();
+  renderPosition();
+});
+$("#pz-list").addEventListener("click", (e) => {
+  const b = e.target.closest(".pz-item");
+  if (b) startPuzzle(+b.dataset.i);
+});
+
+function renderGrid(g) {
+  const grid = $("#sq-grid"), z = state.pz;
+  const active = state.mode === "puzzle" && z && !z.attempt && !z.reveal && !z.solvedNow;
+  grid.classList.toggle("hidden", !active);
+  if (!active) return;
+  const mine = z.cur.to_move === "white" ? /[A-Z]/ : /[a-z]/;
+  const froms = new Set(z.cur.legal.map((u) => u.slice(0, 2)));
+  const targets = new Set(z.sel ? z.cur.legal.filter((u) => u.startsWith(z.sel)).map((u) => u.slice(2, 4)) : []);
+  let html = "";
+  for (let row = 0; row < 8; row++)
+    for (let col = 0; col < 8; col++) {
+      const sq = squareAt(g, col, row), pc = state.squares[sq];
+      const cls = [pc && mine.test(pc) && froms.has(sq) ? "own" : "", z.sel === sq ? "sel" : "", targets.has(sq) ? `dot${pc ? " cap" : ""}` : ""].join(" ");
+      html += `<div data-sq="${sq}" class="${cls}"></div>`;
+    }
+  grid.innerHTML = html;
+}
+
+$("#sq-grid").addEventListener("click", async (e) => {
+  const cell = e.target.closest("[data-sq]"), z = state.pz;
+  if (!cell || !z) return;
+  const sq = cell.dataset.sq;
+  if (cell.classList.contains("dot")) {
+    const uci = z.sel + sq;
+    z.sel = null;
+    const r = await api(`/api/sessions/${state.sid}/puzzles/attempt`, { method: "POST", body: JSON.stringify({ ref: z.ref, uci }) });
+    if (!r.legal) return renderPosition();
+    z.attempt = r.uci;
+    z.reply = r.solved ? null : r.reply_uci;
+    if (r.solved) {
+      z.solvedNow = true;
+      state.solved.add(z.ref);
+      const line = r.line.length ? ` The engine continues ${esc(r.line.join(" "))}.` : "";
+      z.feedback = { kind: "ok", html: `${r.verdict === "best" ? "★ Correct!" : "✓ Excellent!"} ${esc(r.message)}${line}` };
+    } else {
+      const line = r.reply_line.length ? ` <span class="muted">Line: ${esc(r.reply_line.join(" "))}</span>` : "";
+      z.feedback = { kind: r.verdict === "same" ? "info" : "no", html: `${esc(r.message)}${line}` };
+    }
+    renderPractice();
+    return renderPosition();
+  }
+  z.sel = cell.classList.contains("own") && z.sel !== sq ? sq : null;
+  renderGrid(game(state.gid));
 });
 
 /* ------------------------------------------------------------------ chat */
@@ -585,11 +796,24 @@ async function sendChat(text) {
   $("#chat-input").value = "";
   addMsg("user", esc(text));
   const pending = addMsg("bot", `<div class="skeleton" style="width:200px"></div><span class="muted small">Thinking${state.health?.llm.provider ? " (may run Stockfish)" : ""}…</span>`);
+  let draft = "", status = "";
+  const paint = () => {
+    pending.innerHTML = (draft ? `<div class="md caret">${renderMarkdown(draft)}</div>` : "") + (status ? `<div class="small muted">${statusHtml(status)}</div>` : "");
+  };
   try {
-    const r = await api(`/api/sessions/${state.sid}/chat`, { method: "POST", body: JSON.stringify({ message: text }) });
-    pending.innerHTML = `<div class="md">${renderMarkdown(r.markdown, r.verification)}</div>` +
-      `<div class="tools">${r.verification ? groundingBadge(r.verification, true) : ""}${r.trace?.length ? `<div class="trace">${traceHtml(r.trace)}</div>` : ""}</div>`;
-    markUnverified(pending, r.verification);
+    await streamPost(`/api/sessions/${state.sid}/chat/stream`, { message: text }, (ev) => {
+      if (ev.type === "round") draft = "";
+      else if (ev.type === "delta") { draft += ev.text; status = ""; paint(); }
+      else if (ev.type === "tool") { status = toolLabel(ev); paint(); }
+      else if (ev.type === "status") { status = ev.text; paint(); }
+      else if (ev.type === "error") throw new Error(ev.message);
+      else if (ev.type === "done") {
+        const r = ev.result;
+        pending.innerHTML = `<div class="md">${renderMarkdown(r.markdown, r.verification)}</div>` +
+          `<div class="tools">${r.verification ? groundingBadge(r.verification, true) : ""}${r.trace?.length ? `<div class="trace">${traceHtml(r.trace)}</div>` : ""}</div>`;
+        markUnverified(pending, r.verification);
+      }
+    });
   } catch (e) {
     pending.innerHTML = `<span class="c-blunder">${esc(e.message)}</span>`;
   }

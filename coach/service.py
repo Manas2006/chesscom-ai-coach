@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import queue
 import threading
 import time
 import uuid
+from collections import defaultdict, deque
+from typing import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -13,7 +16,7 @@ from pathlib import Path
 import chess
 import chess.svg
 
-from . import agent
+from . import agent, practice
 from .chesscom import ChessComClient, ChessComError, FixtureClient, PlayerNotFound, normalize_username
 from .config import Settings
 from .engine import ANALYSIS_VERSION, EnginePool, GameAnalysis, analyse_game
@@ -57,6 +60,21 @@ class CoachService:
         self._jobs_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="job")
         self._engine_threads = ThreadPoolExecutor(max_workers=settings.engine_workers, thread_name_prefix="engine")
         self._locks: dict[str, threading.Lock] = {}
+        self._llm_calls: dict[str, deque] = defaultdict(deque)
+
+    # -- public-deployment guard ---------------------------------------------------------------
+    def allow_llm(self, client: str) -> bool:
+        """Sliding one-hour window per client; LLM_RATE_LIMIT_PER_HOUR=0 (the default) disables it."""
+        limit = self.settings.llm_rate_limit_per_hour
+        if not limit or self.provider is None:
+            return True
+        q, now = self._llm_calls[client], time.time()
+        while q and now - q[0] > 3600:
+            q.popleft()
+        if len(q) >= limit:
+            return False
+        q.append(now)
+        return True
 
     def close(self) -> None:
         self._jobs_pool.shutdown(wait=False, cancel_futures=True)
@@ -166,24 +184,52 @@ class CoachService:
             raise KeyError(sid)
         return s
 
-    def report(self, sid: str, refresh: bool = False) -> dict:
+    def report(self, sid: str, refresh: bool = False, on_event=None) -> dict:
         s = self.session(sid)
         if s.report and not refresh:
             return s.report
         try:
-            s.report = agent.generate_report(s, self.provider, self.pool, self.settings)
+            s.report = agent.generate_report(s, self.provider, self.pool, self.settings, on_event=on_event)
         except LLMError as exc:
             fallback = agent.generate_report(s, None, self.pool, self.settings)
             fallback["error"] = f"{exc}. Showing the engine-only report instead."
             s.report = fallback
         return s.report
 
-    def chat(self, sid: str, message: str) -> dict:
+    def chat(self, sid: str, message: str, on_event=None) -> dict:
         s = self.session(sid)
         try:
-            return agent.chat(s, self.provider, self.pool, self.settings, message)
+            return agent.chat(s, self.provider, self.pool, self.settings, message, on_event=on_event)
         except LLMError as exc:
             return {"markdown": f"The language model call failed: {exc}", "verification": None, "trace": [], "error": str(exc)}
+
+    @staticmethod
+    def sse(work) -> Iterator[str]:
+        """Run `work(emit)` in a thread and relay its events as server-sent events, ending with done/error."""
+        q: queue.Queue = queue.Queue()
+
+        def runner():
+            try:
+                q.put({"type": "done", "result": work(q.put)})
+            except Exception as exc:  # surfaced to the UI instead of a broken stream
+                q.put({"type": "error", "message": str(exc)})
+
+        threading.Thread(target=runner, daemon=True).start()
+        while True:
+            ev = q.get()
+            yield f"data: {json.dumps(ev)}\n\n"
+            if ev["type"] in ("done", "error"):
+                return
+
+    # -- practice -----------------------------------------------------------------------------------
+    def puzzles(self, sid: str) -> list[dict]:
+        return practice.puzzle_list(self.session(sid))
+
+    def puzzle_attempt(self, sid: str, ref: str, uci: str) -> dict:
+        return practice.attempt(self.session(sid), self.pool, ref, uci, self.settings.refutation_nodes)
+
+    def puzzle_hint(self, sid: str, ref: str, level: int) -> dict:
+        return practice.hint(self.session(sid), ref, level)
 
     # -- views --------------------------------------------------------------------------------------
     def session_view(self, sid: str) -> dict:
@@ -257,7 +303,10 @@ class CoachService:
             "report": s.report,
         }
 
-    def board_svg(self, sid: str, gid: str, ply: int, mode: str = "after", size: int = 400) -> str:
+    def board_svg(
+        self, sid: str, gid: str, ply: int, mode: str = "after", size: int = 400,
+        attempt: str | None = None, reply: str | None = None, reveal: str | None = None, mark: str | None = None,
+    ) -> str:
         """mode=after: the position after `ply`, with a green arrow for the better move if `ply` was an error.
         mode=decision: the position BEFORE `ply`, with the played move (red) and the engine's choice (green)."""
         s = self.session(sid)
@@ -278,6 +327,39 @@ class CoachService:
             mv = chess.Move.from_uci(uci)
             return chess.svg.Arrow(mv.from_square, mv.to_square, color=color)
 
+        if mode == "puzzle" and ply >= 0:
+            # Practice: the position before the player's mistake, with no engine hints drawn.
+            p = g.plies[ply]
+            board = chess.Board(p.fen_before)
+            last = chess.Move.from_uci(g.plies[ply - 1].uci) if ply > 0 else None
+            if attempt:
+                mv = chess.Move.from_uci(attempt)
+                if board.is_legal(mv):
+                    board.push(mv)
+                    last = mv
+                    if reply:
+                        r = chess.Move.from_uci(reply)
+                        if board.is_legal(r):
+                            arrows.append(arrow(reply, "#FA412Dcc"))
+            elif reveal and board.is_legal(chess.Move.from_uci(reveal)):
+                arrows.append(arrow(reveal, "#81B64Ccc"))
+            fill = {}
+            if mark:
+                try:
+                    fill[chess.parse_square(mark)] = "#81B64C99"
+                except ValueError:
+                    pass
+            return chess.svg.board(
+                board,
+                orientation=chess.WHITE if g.player_color == "white" else chess.BLACK,
+                lastmove=last,
+                arrows=arrows,
+                fill=fill,
+                check=board.king(board.turn) if board.is_check() else None,
+                size=size,
+                coordinates=False,
+                colors={"square light": "#EBECD0", "square dark": "#739552", "square light lastmove": "#F5F682", "square dark lastmove": "#B9CA43"},
+            )
         if mode == "decision" and ply >= 0:
             p = g.plies[ply]
             board = chess.Board(p.fen_before)

@@ -13,6 +13,7 @@ from .engine import PIECE_NAMES, PIECE_VALUES, CriticalMoment, EngineLine, mater
 from .pgn import ParsedGame
 
 TAG_LABELS = {
+    "missed_punish": "missed a chance to punish an opponent's error",
     "hangs_piece": "left a piece undefended",
     "loses_material": "lost material to a forcing line",
     "allows_fork": "allowed a fork",

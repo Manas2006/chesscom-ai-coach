@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from typing import Callable
 
 import chess
 
@@ -237,14 +238,25 @@ class AgentResult:
     rounds: int = 0
 
 
-def run_agent(provider: Provider, system: str, history: list[dict], toolbox: Toolbox, max_rounds: int, use_tools: bool = True) -> AgentResult:
+OnEvent = Callable[[dict], None]
+
+
+def run_agent(
+    provider: Provider, system: str, history: list[dict], toolbox: Toolbox, max_rounds: int, use_tools: bool = True, on_event: OnEvent | None = None
+) -> AgentResult:
+    """LLM <-> tool loop. With `on_event`, text is streamed as {"type": "delta"} events, each model call starts
+    with {"type": "round"} (the UI clears its draft) and tool calls are announced as {"type": "tool"}."""
     history = list(history)
     res = AgentResult(text="")
     tools = TOOLS if use_tools else []
     for round_no in range(max_rounds + 1):
         if round_no == max_rounds and tools:
             history.append({"role": "user", "text": "Tool budget used up. Answer now using only what you already have."})
-        resp: LLMResponse = provider.complete(system, history, tools)
+        if on_event and hasattr(provider, "stream"):
+            on_event({"type": "round"})
+            resp: LLMResponse = provider.stream(system, history, tools, lambda t: on_event({"type": "delta", "text": t}))
+        else:
+            resp = provider.complete(system, history, tools)
         res.rounds += 1
         res.input_tokens += resp.input_tokens
         res.output_tokens += resp.output_tokens
@@ -254,6 +266,8 @@ def run_agent(provider: Provider, system: str, history: list[dict], toolbox: Too
             return res
         results = []
         for tc in resp.tool_calls:
+            if on_event:
+                on_event({"type": "tool", "name": tc.name, "args": tc.arguments})
             t0 = time.time()
             out = toolbox.call(tc)
             res.trace.append({"tool": tc.name, "args": tc.arguments, "result": out[:1200], "ms": round((time.time() - t0) * 1000)})
@@ -263,12 +277,21 @@ def run_agent(provider: Provider, system: str, history: list[dict], toolbox: Too
 
 
 def _respond(
-    session: CoachSession, provider: Provider, pool: EnginePool, settings: Settings, system: str, history: list[dict], repair: bool = True
+    session: CoachSession,
+    provider: Provider,
+    pool: EnginePool,
+    settings: Settings,
+    system: str,
+    history: list[dict],
+    repair: bool = True,
+    on_event: OnEvent | None = None,
 ) -> dict:
     t0 = time.time()
     context = build_context(session)
     toolbox = Toolbox(session, pool, settings)
-    first = run_agent(provider, system, history, toolbox, settings.max_tool_rounds)
+    first = run_agent(provider, system, history, toolbox, settings.max_tool_rounds, on_event=on_event)
+    if on_event:
+        on_event({"type": "status", "text": "Checking every move, citation and evaluation against Stockfish"})
     check = verify(first.text, session, context, toolbox.evidence)
     out = {
         "markdown": first.text,
@@ -279,11 +302,14 @@ def _respond(
         "usage": {"input_tokens": first.input_tokens, "output_tokens": first.output_tokens, "rounds": first.rounds},
     }
     if repair and check["flagged"]:
+        if on_event:
+            n = len(check["flagged"])
+            on_event({"type": "status", "text": f"{n} claim{'s' if n != 1 else ''} did not check out. The coach is revising them"})
         fix_history = history + [
             {"role": "assistant", "text": first.text, "tool_calls": []},
             {"role": "user", "text": prompts.REPAIR_TEMPLATE.format(problems=problems_for_repair(check))},
         ]
-        second = run_agent(provider, system, fix_history, toolbox, max(2, settings.max_tool_rounds // 2))
+        second = run_agent(provider, system, fix_history, toolbox, max(2, settings.max_tool_rounds // 2), on_event=on_event)
         if second.text:
             check2 = verify(second.text, session, context, toolbox.evidence)
             if check2["score"] >= check["score"]:
@@ -296,7 +322,9 @@ def _respond(
     return out
 
 
-def generate_report(session: CoachSession, provider: Provider | None, pool: EnginePool, settings: Settings) -> dict:
+def generate_report(
+    session: CoachSession, provider: Provider | None, pool: EnginePool, settings: Settings, on_event: OnEvent | None = None
+) -> dict:
     context = build_context(session)
     if provider is None:
         md = template_report(session)
@@ -313,10 +341,12 @@ def generate_report(session: CoachSession, provider: Provider | None, pool: Engi
             "latency_s": 0.0,
         }
     system = prompts.REPORT_SYSTEM + "\n\n" + prompts.context_message(context)
-    return _respond(session, provider, pool, settings, system, [{"role": "user", "text": prompts.REPORT_TASK}])
+    return _respond(session, provider, pool, settings, system, [{"role": "user", "text": prompts.REPORT_TASK}], on_event=on_event)
 
 
-def chat(session: CoachSession, provider: Provider | None, pool: EnginePool, settings: Settings, message: str) -> dict:
+def chat(
+    session: CoachSession, provider: Provider | None, pool: EnginePool, settings: Settings, message: str, on_event: OnEvent | None = None
+) -> dict:
     message = (message or "").strip()[:2000]
     if provider is None:
         return {
@@ -331,7 +361,7 @@ def chat(session: CoachSession, provider: Provider | None, pool: EnginePool, set
     if session.report and session.report.get("markdown"):
         system += "\n\nREPORT YOU ALREADY GAVE THIS PLAYER\n" + session.report["markdown"]
     history = session.chat_history[-12:] + [{"role": "user", "text": message}]
-    result = _respond(session, provider, pool, settings, system, history)
+    result = _respond(session, provider, pool, settings, system, history, on_event=on_event)
     session.chat_history.append({"role": "user", "text": message})
     session.chat_history.append({"role": "assistant", "text": result["markdown"], "tool_calls": []})
     return result
@@ -341,6 +371,7 @@ def chat(session: CoachSession, provider: Provider | None, pool: EnginePool, set
 # Engine-only fallback (no API key): deterministic, fully grounded by construction.
 # -------------------------------------------------------------------------------------------------
 DRILLS = {
+    "missed_punish": "After every opponent move, ask what it allowed: list the checks, captures and threats it created before continuing your plan.",
     "hangs_piece": "Blunder check before every move: ask \"what does this leave undefended?\" Puzzles: Hanging Piece theme, 15 a day.",
     "loses_material": "Before committing, look at the opponent's forcing replies (checks, captures, threats). Puzzles: mixed tactics, 15 a day.",
     "allows_fork": "Puzzles: Fork theme, 15 a day. Notice when your king and a valuable piece sit a knight's jump apart.",
@@ -374,7 +405,7 @@ def template_report(session: CoachSession) -> str:
         f"Across your last {smp['games']} games ({r['win']}W {r['loss']}L {r['draw']}D) your engine accuracy was "
         f"{acc['overall']}"
         + (f", lowest in the {acc['worst_phase']} ({acc['by_phase'][acc['worst_phase']]})" if acc.get("worst_phase") else "")
-        + f". You averaged {err['per_game']['mistake']} mistakes and {err['per_game']['blunder']} blunders per game.",
+        + f". You averaged {err['per_game']['mistake']} mistakes, {err['per_game']['miss']} misses and {err['per_game']['blunder']} blunders per game.",
         "",
         "## Patterns to fix",
     ]

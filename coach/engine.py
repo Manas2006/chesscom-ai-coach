@@ -27,7 +27,7 @@ MATE_CP = 10_000
 PIECE_VALUES = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9, chess.KING: 0}
 PIECE_NAMES = {chess.PAWN: "pawn", chess.KNIGHT: "knight", chess.BISHOP: "bishop", chess.ROOK: "rook", chess.QUEEN: "queen", chess.KING: "king"}
 THRESHOLDS = (("blunder", 20.0), ("mistake", 10.0), ("inaccuracy", 5.0))
-ANALYSIS_VERSION = 6  # bump to invalidate cached analyses when the logic changes
+ANALYSIS_VERSION = 7  # bump to invalidate cached analyses when the logic changes
 
 
 # ---------------------------------------------------------------------------------------------
@@ -380,9 +380,24 @@ def _phase_stats(moves: list[MoveAnalysis]) -> dict[str, dict]:
             "accuracy": aggregate_accuracy([m.accuracy for m in ms]),
             "inaccuracy": sum(m.classification == "inaccuracy" for m in ms),
             "mistake": sum(m.classification == "mistake" for m in ms),
+            "miss": sum(m.classification == "miss" for m in ms),
             "blunder": sum(m.classification == "blunder" for m in ms),
         }
     return stats
+
+
+ERRORS = ("mistake", "blunder", "miss")
+
+
+def label_misses(moves: list[MoveAnalysis]) -> list[int]:
+    """Chess.com Game Review's "Miss": a mistake or blunder played right after the opponent's own error,
+    i.e. failing to punish it. Returns the ply indexes relabelled."""
+    changed = []
+    for prev, mv in zip(moves, moves[1:]):
+        if mv.classification in ("mistake", "blunder") and prev.classification in ERRORS:
+            mv.classification = "miss"
+            changed.append(mv.ply)
+    return changed
 
 
 def pick_candidate_moments(moves: list[MoveAnalysis], color: str, limit: int = 3) -> list[MoveAnalysis]:
@@ -469,9 +484,17 @@ def analyse_game(pool: EnginePool, game: ParsedGame, depth: int, deep_nodes: int
                 moments.append(moment)
             if len(moments) >= 3:
                 break
+    for ply in label_misses(moves):
+        m = next((x for x in moments if x.ply == ply), None)
+        if m:
+            prev = moves[ply - 1]
+            m.classification = "miss"
+            m.tags.insert(0, "missed_punish")
+            note = f"your opponent's {prev.label} was a {prev.classification}"
+            m.tag_notes.insert(0, note + (f" and {m.best_san} would have punished it" if m.best_san else ""))
     mine = [m for m in moves if m.color == game.player_color]
     theirs = [m for m in moves if m.color != game.player_color]
-    counts = {c: sum(m.classification == c for m in mine) for c in ("best", "excellent", "good", "inaccuracy", "mistake", "blunder")}
+    counts = {c: sum(m.classification == c for m in mine) for c in ("best", "excellent", "good", "inaccuracy", "mistake", "miss", "blunder")}
     after_opening = [m.win_after for m in mine if int(m.label.split(".")[0]) > 10] or [m.win_after for m in mine] or [50.0]
     return GameAnalysis(
         gid=game.gid,

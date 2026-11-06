@@ -20,6 +20,9 @@ COPY fixtures ./fixtures
 COPY evals ./evals
 COPY tests ./tests
 
+# Pre-analyse the bundled demo games so a cold container serves them instantly
+RUN python -m coach.warm
+
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"
 CMD ["python", "-m", "coach"]
