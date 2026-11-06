@@ -5,8 +5,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -22,6 +22,16 @@ class AnalyzeRequest(BaseModel):
     games: int = Field(10, ge=1, le=30)
     time_class: str = "all"
     demo: bool = False
+
+
+class AttemptRequest(BaseModel):
+    ref: str = Field(..., max_length=40)
+    uci: str = Field(..., min_length=4, max_length=5)
+
+
+class HintRequest(BaseModel):
+    ref: str = Field(..., max_length=40)
+    level: int = Field(1, ge=1, le=3)
 
 
 class ChatRequest(BaseModel):
@@ -65,21 +75,82 @@ def create_app(service: CoachService | None = None) -> FastAPI:
         _session_or_404(sid)
         return svc.session_view(sid)
 
+    def _client(request: Request) -> str:
+        fwd = request.headers.get("x-forwarded-for", "")
+        return fwd.split(",")[0].strip() or (request.client.host if request.client else "unknown")
+
+    def _rate_limit(request: Request) -> None:
+        if not svc.allow_llm(_client(request)):
+            raise HTTPException(429, "This demo limits AI coach requests per hour. Please try again later.")
+
+    SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+
     @app.post("/api/sessions/{sid}/report")
-    def report(sid: str, refresh: bool = False):
-        _session_or_404(sid)
+    def report(sid: str, request: Request, refresh: bool = False):
+        s = _session_or_404(sid)
+        if refresh or not s.report:  # a cached report costs nothing
+            _rate_limit(request)
         return svc.report(sid, refresh=refresh)
 
+    @app.post("/api/sessions/{sid}/report/stream")
+    def report_stream(sid: str, request: Request, refresh: bool = False):
+        s = _session_or_404(sid)
+        if refresh or not s.report:
+            _rate_limit(request)
+        work = lambda emit: svc.report(sid, refresh=refresh, on_event=emit)  # noqa: E731
+        return StreamingResponse(svc.sse(work), media_type="text/event-stream", headers=SSE_HEADERS)
+
     @app.post("/api/sessions/{sid}/chat")
-    def chat(sid: str, req: ChatRequest):
+    def chat(sid: str, req: ChatRequest, request: Request):
         _session_or_404(sid)
+        _rate_limit(request)
         return svc.chat(sid, req.message)
 
-    @app.get("/api/sessions/{sid}/board.svg")
-    def board(sid: str, game: str, ply: int = -1, mode: str = Query("after", pattern="^(after|decision)$"), size: int = Query(400, ge=120, le=900)):
+    @app.post("/api/sessions/{sid}/chat/stream")
+    def chat_stream(sid: str, req: ChatRequest, request: Request):
+        _session_or_404(sid)
+        _rate_limit(request)
+        work = lambda emit: svc.chat(sid, req.message, on_event=emit)  # noqa: E731
+        return StreamingResponse(svc.sse(work), media_type="text/event-stream", headers=SSE_HEADERS)
+
+    @app.get("/api/sessions/{sid}/puzzles")
+    def puzzles(sid: str):
+        _session_or_404(sid)
+        return svc.puzzles(sid)
+
+    @app.post("/api/sessions/{sid}/puzzles/attempt")
+    def puzzle_attempt(sid: str, req: AttemptRequest):
         _session_or_404(sid)
         try:
-            svg = svc.board_svg(sid, game, ply, mode=mode, size=size)
+            return svc.puzzle_attempt(sid, req.ref, req.uci)
+        except KeyError:
+            raise HTTPException(404, "unknown puzzle")
+
+    @app.post("/api/sessions/{sid}/puzzles/hint")
+    def puzzle_hint(sid: str, req: HintRequest):
+        _session_or_404(sid)
+        try:
+            return svc.puzzle_hint(sid, req.ref, req.level)
+        except KeyError:
+            raise HTTPException(404, "unknown puzzle")
+
+    UCI = "^[a-h][1-8][a-h][1-8][qrbn]?$"
+
+    @app.get("/api/sessions/{sid}/board.svg")
+    def board(
+        sid: str,
+        game: str,
+        ply: int = -1,
+        mode: str = Query("after", pattern="^(after|decision|puzzle)$"),
+        size: int = Query(400, ge=120, le=900),
+        attempt: str | None = Query(None, pattern=UCI),
+        reply: str | None = Query(None, pattern=UCI),
+        reveal: str | None = Query(None, pattern=UCI),
+        mark: str | None = Query(None, pattern="^[a-h][1-8]$"),
+    ):
+        _session_or_404(sid)
+        try:
+            svg = svc.board_svg(sid, game, ply, mode=mode, size=size, attempt=attempt, reply=reply, reveal=reveal, mark=mark)
         except KeyError:
             raise HTTPException(404, "unknown game")
         return Response(svg, media_type="image/svg+xml", headers={"Cache-Control": "max-age=3600"})

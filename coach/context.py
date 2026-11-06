@@ -97,11 +97,17 @@ def build_context(s: CoachSession) -> str:
     if acc.get("chesscom_avg") is not None:
         out.append(f"Chess.com's own Game Review accuracy for these games averaged {acc['chesscom_avg']} (different formula)")
     pg = err["per_game"]
-    out.append(f"per game: {pg['inaccuracy']} inaccuracies, {pg['mistake']} mistakes, {pg['blunder']} blunders")
-    for phase, e in err["by_phase"].items():
-        out.append(f"{phase}: {e['moves']} moves, {e['inaccuracies']} inaccuracies, {e['mistakes']} mistakes, {e['blunders']} blunders")
     out.append(
-        f"serious errors (mistakes + blunders) among critical moments: {tm['serious_errors']}; "
+        f"per game: {pg['inaccuracy']} inaccuracies, {pg['mistake']} mistakes, {pg['miss']} misses "
+        f"(failed to punish the opponent's error), {pg['blunder']} blunders"
+    )
+    for phase, e in err["by_phase"].items():
+        out.append(
+            f"{phase}: {e['moves']} moves, {e['inaccuracies']} inaccuracies, {e['mistakes']} mistakes, "
+            f"{e['misses']} misses, {e['blunders']} blunders"
+        )
+    out.append(
+        f"serious errors (mistakes + misses + blunders) among critical moments: {tm['serious_errors']}; "
         f"made in time pressure: {tm['in_time_pressure']}; made in 2 seconds or less: {tm['played_quickly']}"
     )
     if tm["lost_on_time"]:

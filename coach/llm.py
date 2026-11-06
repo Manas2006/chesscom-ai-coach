@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Callable, Protocol
 
 import httpx
 
@@ -43,11 +43,30 @@ class ToolSpec:
     parameters: dict  # JSON schema
 
 
+OnText = Callable[[str], None]
+
+
 class Provider(Protocol):
     name: str
     model: str
 
     def complete(self, system: str, history: list[dict], tools: list[ToolSpec]) -> LLMResponse: ...
+
+    def stream(self, system: str, history: list[dict], tools: list[ToolSpec], on_text: OnText) -> LLMResponse: ...
+
+
+def _sse_data(lines):
+    """Yield parsed JSON payloads from a server-sent-events line iterator."""
+    for line in lines:
+        if not line or not line.startswith("data:"):
+            continue
+        payload = line[5:].strip()
+        if payload == "[DONE]":
+            return
+        try:
+            yield json.loads(payload)
+        except ValueError:
+            continue
 
 
 def _raise_for(resp: httpx.Response, who: str) -> None:
@@ -94,7 +113,7 @@ class AnthropicProvider:
                 )
         return msgs
 
-    def complete(self, system: str, history: list[dict], tools: list[ToolSpec]) -> LLMResponse:
+    def _body(self, system: str, history: list[dict], tools: list[ToolSpec]) -> dict:
         body = {
             "model": self.model,
             "max_tokens": self.max_tokens,
@@ -104,6 +123,51 @@ class AnthropicProvider:
         }
         if tools:
             body["tools"] = [{"name": t.name, "description": t.description, "input_schema": t.parameters} for t in tools]
+        return body
+
+    def stream(self, system: str, history: list[dict], tools: list[ToolSpec], on_text: OnText) -> LLMResponse:
+        body = self._body(system, history, tools) | {"stream": True}
+        blocks: dict[int, dict] = {}
+        text: list[str] = []
+        usage = {"in": 0, "out": 0}
+        try:
+            with self.http.stream("POST", "/v1/messages", json=body) as resp:
+                if resp.status_code != 200:
+                    resp.read()
+                    _raise_for(resp, "Anthropic")
+                for ev in _sse_data(resp.iter_lines()):
+                    kind = ev.get("type")
+                    if kind == "message_start":
+                        u = ev.get("message", {}).get("usage", {})
+                        usage["in"] = u.get("input_tokens", 0) + u.get("cache_read_input_tokens", 0) + u.get("cache_creation_input_tokens", 0)
+                    elif kind == "content_block_start":
+                        cb = ev.get("content_block", {})
+                        blocks[ev["index"]] = {"type": cb.get("type"), "id": cb.get("id"), "name": cb.get("name"), "json": ""}
+                    elif kind == "content_block_delta":
+                        d = ev.get("delta", {})
+                        if d.get("type") == "text_delta":
+                            text.append(d.get("text", ""))
+                            on_text(d.get("text", ""))
+                        elif d.get("type") == "input_json_delta" and ev.get("index") in blocks:
+                            blocks[ev["index"]]["json"] += d.get("partial_json", "")
+                    elif kind == "message_delta":
+                        usage["out"] = ev.get("usage", {}).get("output_tokens", usage["out"])
+                    elif kind == "error":
+                        raise LLMError(f"Anthropic stream error: {ev.get('error', {}).get('message')}")
+        except httpx.HTTPError as exc:
+            raise LLMError(f"Anthropic request failed: {exc}") from exc
+        calls = []
+        for _, b in sorted(blocks.items()):
+            if b["type"] == "tool_use":
+                try:
+                    args = json.loads(b["json"] or "{}")
+                except ValueError:
+                    args = {}
+                calls.append(ToolCall(b["id"], b["name"], args))
+        return LLMResponse(text="".join(text), tool_calls=calls, input_tokens=usage["in"], output_tokens=usage["out"])
+
+    def complete(self, system: str, history: list[dict], tools: list[ToolSpec]) -> LLMResponse:
+        body = self._body(system, history, tools)
         try:
             resp = self.http.post("/v1/messages", json=body)
         except httpx.HTTPError as exc:
@@ -149,10 +213,51 @@ class OpenAIProvider:
                     msgs.append({"role": "tool", "tool_call_id": r["id"], "content": r["content"]})
         return msgs
 
-    def complete(self, system: str, history: list[dict], tools: list[ToolSpec]) -> LLMResponse:
+    def _body(self, system: str, history: list[dict], tools: list[ToolSpec]) -> dict:
+        # Reasoning models spend completion tokens on hidden reasoning, hence the headroom.
         body: dict = {"model": self.model, "messages": self.to_messages(system, history), "max_completion_tokens": self.max_tokens * 4}
         if tools:
             body["tools"] = [{"type": "function", "function": {"name": t.name, "description": t.description, "parameters": t.parameters}} for t in tools]
+        return body
+
+    def stream(self, system: str, history: list[dict], tools: list[ToolSpec], on_text: OnText) -> LLMResponse:
+        body = self._body(system, history, tools) | {"stream": True, "stream_options": {"include_usage": True}}
+        text: list[str] = []
+        slots: dict[int, dict] = {}
+        usage = {}
+        try:
+            with self.http.stream("POST", "/chat/completions", json=body) as resp:
+                if resp.status_code != 200:
+                    resp.read()
+                    _raise_for(resp, "OpenAI")
+                for chunk in _sse_data(resp.iter_lines()):
+                    usage = chunk.get("usage") or usage
+                    for choice in chunk.get("choices", []):
+                        delta = choice.get("delta", {})
+                        if delta.get("content"):
+                            text.append(delta["content"])
+                            on_text(delta["content"])
+                        for tc in delta.get("tool_calls") or []:
+                            slot = slots.setdefault(tc.get("index", 0), {"id": "", "name": "", "args": ""})
+                            slot["id"] = tc.get("id") or slot["id"]
+                            fn = tc.get("function") or {}
+                            slot["name"] = fn.get("name") or slot["name"]
+                            slot["args"] += fn.get("arguments") or ""
+        except httpx.HTTPError as exc:
+            raise LLMError(f"OpenAI request failed: {exc}") from exc
+        calls = []
+        for _, s in sorted(slots.items()):
+            try:
+                args = json.loads(s["args"] or "{}")
+            except ValueError:
+                args = {}
+            calls.append(ToolCall(s["id"], s["name"], args))
+        return LLMResponse(
+            text="".join(text), tool_calls=calls, input_tokens=usage.get("prompt_tokens", 0), output_tokens=usage.get("completion_tokens", 0)
+        )
+
+    def complete(self, system: str, history: list[dict], tools: list[ToolSpec]) -> LLMResponse:
+        body = self._body(system, history, tools)
         try:
             resp = self.http.post("/chat/completions", json=body)
         except httpx.HTTPError as exc:
@@ -191,6 +296,12 @@ class ScriptedProvider:
         if not self.responses:
             return LLMResponse(text="(no more scripted responses)")
         return self.responses.pop(0)
+
+    def stream(self, system: str, history: list[dict], tools: list[ToolSpec], on_text: OnText) -> LLMResponse:
+        resp = self.complete(system, history, tools)
+        for i in range(0, len(resp.text), 24):
+            on_text(resp.text[i : i + 24])
+        return resp
 
 
 def make_provider(settings: Settings, override: str | None = None) -> Provider | None:

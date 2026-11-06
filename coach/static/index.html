@@ -74,6 +74,7 @@
                 <img id="board" alt="Chess board" width="560" height="560" />
                 <div class="coords" id="coords"></div>
                 <div class="sq-badge hidden" id="sq-badge"></div>
+                <div class="sq-grid hidden" id="sq-grid"></div>
               </div>
               <div class="pbar" id="pbar-bottom"></div>
             </div>
@@ -85,7 +86,8 @@
           <nav class="tabs" role="tablist">
             <button class="tab active" data-tab="coach" role="tab">Coach</button>
             <button class="tab" data-tab="moves" role="tab">Moves</button>
-            <button class="tab" data-tab="chat" role="tab">Ask the coach</button>
+            <button class="tab" data-tab="practice" role="tab">Practice</button>
+            <button class="tab" data-tab="chat" role="tab">Ask</button>
           </nav>
 
           <div class="tab-body" data-body="coach">
@@ -103,6 +105,12 @@
             <div class="eval-graph" id="eval-graph"></div>
             <div class="explainer" id="explainer"></div>
             <div class="moves" id="moves"></div>
+          </div>
+
+          <div class="tab-body hidden" data-body="practice">
+            <div class="pz-head"><b>Retry your mistakes</b><span class="muted small" id="pz-progress"></span></div>
+            <div id="pz-card" class="pz-card"></div>
+            <div id="pz-list" class="pz-list"></div>
           </div>
 
           <div class="tab-body hidden" data-body="chat">

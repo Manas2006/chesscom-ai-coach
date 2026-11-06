@@ -67,6 +67,7 @@ class Settings:
     llm_max_tokens: int = 2000
     llm_timeout_s: float = 90.0
     max_tool_rounds: int = 6
+    llm_rate_limit_per_hour: int = 0  # per client IP; set it for public deployments
 
     cache_dir: Path = field(default_factory=lambda: ROOT / ".cache")
     fixtures_dir: Path = field(default_factory=lambda: ROOT / "fixtures")
@@ -92,6 +93,7 @@ class Settings:
         s.openai_api_key = os.environ.get("OPENAI_API_KEY") or None
         s.llm_max_tokens = _int("LLM_MAX_TOKENS", s.llm_max_tokens)
         s.max_tool_rounds = _int("LLM_MAX_TOOL_ROUNDS", s.max_tool_rounds)
+        s.llm_rate_limit_per_hour = _int("LLM_RATE_LIMIT_PER_HOUR", s.llm_rate_limit_per_hour)
         if os.environ.get("COACH_CACHE_DIR"):
             s.cache_dir = Path(os.environ["COACH_CACHE_DIR"])
         if os.environ.get("CHESSCOM_USER_AGENT"):

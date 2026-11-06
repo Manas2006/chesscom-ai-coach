@@ -1,6 +1,6 @@
 # Coach: an engine-grounded AI chess coach for Chess.com players
 
-[![ci](https://github.com/Manas2006/chesscom-ai-coach/actions/workflows/ci.yml/badge.svg)](https://github.com/Manas2006/chesscom-ai-coach/actions/workflows/ci.yml)
+[![ci](https://github.com/Manas2006/chesscom-ai-coach/actions/workflows/ci.yml/badge.svg)](https://github.com/Manas2006/chesscom-ai-coach/actions/workflows/ci.yml) [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Manas2006/chesscom-ai-coach)
 
 Enter a Chess.com username. Stockfish analyses your recent games and finds the moves that cost you the most, an LLM explains the patterns behind them and builds a 7-day plan, and **every move, citation and evaluation the LLM writes is checked against the engine before you see it.**
 
@@ -25,13 +25,15 @@ cp .env.example .env   # then set ANTHROPIC_API_KEY=... (or OPENAI_API_KEY=...)
 docker compose up --build
 ```
 
+**Hosted:** the Deploy to Render button builds the same image from `render.yaml`. The demo games are pre-analysed during the build, so they load instantly even on the free plan. Paste an API key in the Render dashboard; `LLM_RATE_LIMIT_PER_HOUR` (20 per visitor by default there) protects your budget on a public link.
+
 **Without Docker:** install Stockfish (`brew install stockfish` or `apt install stockfish`) and [uv](https://docs.astral.sh/uv/), then `make run`.
 
 | Command | What it does |
 |---|---|
 | `make up` | `docker compose up --build` |
 | `make run` | Run locally with uv |
-| `make test` | 38 tests: parsing, engine, verifier, agent loop, provider wire formats, HTTP API |
+| `make test` | 50 tests: parsing, engine, verifier, agent loop, streaming and provider wire formats, practice mode, rate limit, HTTP API |
 | `make eval` | Grounded vs ungrounded ablation (needs an API key), writes `evals/RESULTS.md` |
 | `make eval-dry` | Exercise the eval harness without an API key |
 
@@ -40,11 +42,15 @@ docker compose up --build
 - **Finds your costliest moves.** Every position is evaluated at depth 12. Your worst candidates get a deeper multi-line re-check plus a search for the opponent's punishing reply. Fast-pass false positives are discarded, and verdicts are reproducible run to run.
 - **Explains why, with evidence.** Deterministic pattern tags (hung a piece, allowed a fork, missed a capture, missed a mate, moved in under 2 seconds, low on the clock, slipped while winning) and cross-game aggregates (accuracy by phase, errors per game, openings, thrown wins).
 - **Writes a coaching report** whose every claim cites a real move as `[[G1 22...Qc7]]`. Citations render as chips that jump the board to that position, with red and green arrows for the played and best moves.
-- **Lets you ask follow-ups.** The chat coach can run Stockfish on demand (`evaluate_move`, `analyze_position`, `get_moment`, `get_game_moves`), and each tool call is shown in the answer.
+- **Lets you ask follow-ups.** The chat coach can run Stockfish on demand (`evaluate_move`, `analyze_position`, `get_moment`, `get_game_moves`), and each tool call is shown in the answer. Every move in the review has an "Ask the coach about this move" button.
+- **Streams.** Report and chat text appear as they are written, with live status lines for each Stockfish tool call, the verification pass and any repair.
+- **Turns your mistakes into puzzles.** The Practice tab replays each key moment as "find a better move" on a clickable board. Stockfish grades every try (the best move, or anything within 5 points of it, counts), shows the punishing reply when you are wrong, and gives three levels of hints (theme, piece, solution).
 - **Shows you how grounded it is.** A badge reports the share of checked claims that passed. Unsupported moves or evaluations are highlighted in the text.
-- **Feels native to Chess.com.** The review screen follows Chess.com's Game Review conventions: eval bar, player bars with the clock at every move, a White-advantage graph, classification badges on the board (best, excellent, good, inaccuracy, mistake, blunder), and a figurine move list with an explanation of the current move. Colors, board theme and radii come from Chess.com's public CSS design tokens. Pieces are python-chess's open-licensed set, and no Chess.com logos, fonts or icon art are bundled.
+- **Feels native to Chess.com.** The review screen follows Chess.com's Game Review conventions: eval bar, player bars with the clock at every move, a White-advantage graph, classification badges on the board (best, excellent, good, inaccuracy, mistake, miss, blunder; a "miss" is failing to punish the opponent's error), and a figurine move list with an explanation of the current move. Colors, board theme and radii come from Chess.com's public CSS design tokens. Pieces are python-chess's open-licensed set, and no Chess.com logos, fonts or icon art are bundled.
 
 ![Move-by-move review](docs/screenshots/review.png)
+
+![Practice mode](docs/screenshots/practice.png)
 
 ![Key moments](docs/screenshots/moments.png)
 
@@ -100,17 +106,19 @@ Metrics: citation validity, move legality, recommendation agreement with Stockfi
 - Small samples: 10 games give anecdotes, not statistics. The report shows counts and never claims significance.
 - Sessions live in memory (a restart clears them; the analysis cache survives). There are no accounts and no persistence of progress over time.
 - Daily games get no clock analysis. Variants (Chess960 and others) are skipped.
-- An LLM report takes roughly 15 to 40 seconds and is not streamed yet.
+- An LLM report still takes roughly 15 to 40 seconds end to end; streaming makes the wait visible but not shorter.
+- The rate limit is in-memory and per process; a multi-instance deployment would need a shared store.
 
 ## What I would do next
 
-1. **Stream** report and chat tokens, and generate the report while the engine is still finishing later games.
-2. **Puzzles from your own mistakes:** turn each critical moment into a "find the better move" drill with spaced repetition, and track whether the pattern counts fall over time.
+1. **Spaced repetition for practice:** persist solved and failed puzzles, resurface the ones you missed, and track whether pattern counts fall over time.
+2. **Start the report earlier:** generate it while the engine is still finishing later games.
 3. **Opening repertoire diagnosis:** compare the player's first 12 moves against an opening book or master database to find exactly where they leave theory and how that correlates with results.
 4. **Richer tactical motifs:** pins, skewers, overloaded defenders and back-rank weaknesses via static exchange evaluation and attack maps.
 5. **Judge coaching quality, not just faithfulness:** a rubric-based LLM judge calibrated against a small set of human (titled-player) ratings, plus A/B prompt experiments.
-6. **Rating-aware thresholds:** Chess.com's Game Review classifies moves relative to the player's level. Adopting that would make "mistake" mean the same thing to a 900 and a 2400.
-7. **Persistence:** store sessions and reports so a player can come back, and show progress week to week.
+6. **The rest of Game Review's vocabulary:** Book (needs an opening database), Great (only move) and Brilliant (a sound sacrifice), each a deterministic rule on top of the existing engine data.
+7. **Rating-aware thresholds:** Chess.com's Game Review classifies moves relative to the player's level. Adopting that would make "mistake" mean the same thing to a 900 and a 2400.
+8. **Persistence:** store sessions and reports so a player can come back, and show progress week to week.
 
 ## Project layout
 
@@ -127,6 +135,8 @@ coach/
   llm.py        Anthropic / OpenAI raw-HTTP adapters + scripted provider for tests
   agent.py      tool-using agent loop, report and chat, engine-only fallback
   verify.py     post-hoc grounding checker
+  practice.py   "retry your mistakes" puzzles graded by Stockfish
+  warm.py       pre-analyses the demo games at docker build time
   service.py    jobs, caching, orchestration, board rendering
   server.py     FastAPI routes; static/ holds the UI
 fixtures/       6 real GothamChess games + profile from the Chess.com API

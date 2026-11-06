@@ -75,6 +75,22 @@ Tools take move references instead of FENs because models often corrupt FEN stri
 
 If anything is flagged, the model gets one repair turn listing the exact problems. The repaired answer is kept only if it scores at least as well. The engine-only template report passes the same verifier at 100%, which doubles as a regression test of the verifier itself; it already caught a real bug (`str.capitalize()` lowercasing SAN in a note).
 
+## Practice mode
+
+Each critical moment becomes a puzzle at the position before the mistake. A try is graded against the deep-pass lines already computed for that moment; anything else is searched on demand (150k nodes) for the opponent's best reply. A try counts as solved if it is the engine's best move or within 5 points of win chance of it, the same bar the verifier uses for "as good as best", so strong alternatives are not marked wrong. Hints escalate from a theme derived from the verified tags (for example "Your opponent just made a mistake" for a miss), to the piece to move, to the full line. The eval bar is hidden while solving.
+
+## Streaming
+
+Both provider adapters speak their APIs' server-sent-event formats (Anthropic content-block deltas including `input_json_delta` for tool arguments; OpenAI chunk deltas including incremental tool calls, with `include_usage`). The agent turns a run into events: `round` (a new model call; the UI clears its draft), `delta` (text), `tool` (a Stockfish call), `status` (verification and repair) and `done` (the verified result). The UI paints the draft as it streams and then swaps in the verified, citation-linked version, so nothing unverified is ever presented as final.
+
+## Classification: Miss
+
+A mistake or blunder played immediately after the opponent's own error is relabelled `miss`, as in Chess.com's Game Review, and its key moment gets a `missed_punish` tag and note. On the demo games this turns 4 of 16 key moments into misses, which is exactly the "you got a gift and gave it back" pattern blitz players most need to see.
+
+## Deployment
+
+`render.yaml` deploys the Docker image. `python -m coach.warm` runs during `docker build` and caches the demo analysis inside the image. An optional per-IP sliding-window limit (`LLM_RATE_LIMIT_PER_HOUR`) guards the LLM endpoints on a public link; cached reports do not count against it.
+
 ## Trade-offs
 
 | Decision | Alternative | Why |

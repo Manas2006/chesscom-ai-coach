@@ -56,6 +56,7 @@ def build_profile(username: str, profile: dict, stats: dict, games: list[ParsedG
         phase_err[phase] = {
             "moves": len(ms),
             "mistakes": sum(m.classification == "mistake" for m in ms),
+            "misses": sum(m.classification == "miss" for m in ms),
             "blunders": sum(m.classification == "blunder" for m in ms),
             "inaccuracies": sum(m.classification == "inaccuracy" for m in ms),
         }
@@ -66,7 +67,7 @@ def build_profile(username: str, profile: dict, stats: dict, games: list[ParsedG
 
     moments = [m for g in games for m in analyses[g.gid].moments]
     tag_counts = Counter(t for m in moments for t in m.tags)
-    serious = [m for m in moments if m.classification in ("mistake", "blunder")]
+    serious = [m for m in moments if m.classification in ("mistake", "miss", "blunder")]
     pressure = [m for m in serious if "time_pressure" in m.tags]
     quick = [m for m in serious if "played_quickly" in m.tags]
 
@@ -133,8 +134,8 @@ def build_profile(username: str, profile: dict, stats: dict, games: list[ParsedG
             "worst_phase": worst_phase,
         },
         "errors": {
-            "per_game": {k: round(totals[k] / n, 2) for k in ("inaccuracy", "mistake", "blunder")},
-            "totals": {k: totals[k] for k in ("inaccuracy", "mistake", "blunder")},
+            "per_game": {k: round(totals[k] / n, 2) for k in ("inaccuracy", "mistake", "miss", "blunder")},
+            "totals": {k: totals[k] for k in ("inaccuracy", "mistake", "miss", "blunder")},
             "by_phase": phase_err,
         },
         "time": {
