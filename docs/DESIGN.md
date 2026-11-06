@@ -87,6 +87,7 @@ If anything is flagged, the model gets one repair turn listing the exact problem
 | Template report without a key | Require a key | Reviewers can run everything except chat with zero setup |
 | In-memory sessions, disk cache for analysis | Database | Enough for a single-user demo; the expensive part is cached |
 | Server-rendered SVG boards, vanilla JS | React plus a board library | No build step, no CDN, works offline in Docker |
+| Chess.com design language, original implementation | Pixel copy with Chess.com assets | Colors, board theme, radii and Game Review conventions come from Chess.com's public CSS tokens so the tool feels native to their product, but logos, the Neo piece set, the Chess Sans/Chess Note fonts and icon art are proprietary, so open-licensed pieces, system fonts and standard annotation glyphs are used instead |
 | Real games in `fixtures/` | Synthetic games | Realistic edge cases (clocks, increments, checkmates) for tests and an offline demo |
 
 ## Known gaps
