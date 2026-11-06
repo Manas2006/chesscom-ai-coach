@@ -215,6 +215,8 @@ class CoachService:
                     "start_fen": g.start_fen,
                     # Win chance for the coached player after each ply (index 0 = start position).
                     "win_curve": [round(e.win(g.player_color), 1) for e in a.evals],
+                    # Eval label for the eval bar after each ply, from the coached player's side.
+                    "eval_curve": [_eval_label(e, g.player_color) for e in a.evals],
                     "plies": [
                         {
                             "label": p.label,
@@ -281,9 +283,9 @@ class CoachService:
             board = chess.Board(p.fen_before)
             last = chess.Move.from_uci(g.plies[ply - 1].uci) if ply > 0 else None
             bu = best_for(ply)
-            arrows.append(arrow(p.uci, "#fa412dcc"))
+            arrows.append(arrow(p.uci, "#FA412Dbb"))
             if bu and bu != p.uci:
-                arrows.append(arrow(bu, "#81b64ccc"))
+                arrows.append(arrow(bu, "#81B64Ccc"))
         elif ply < 0:
             board, last = chess.Board(g.start_fen), None
         else:
@@ -291,8 +293,10 @@ class CoachService:
             board, last = chess.Board(p.fen_after), chess.Move.from_uci(p.uci)
             bu = best_for(ply)
             if bu and bu != p.uci and a.moves[ply].classification in ("inaccuracy", "mistake", "blunder"):
-                arrows.append(arrow(bu, "#81b64ccc"))
+                arrows.append(arrow(bu, "#81B64Ccc"))
         check = board.king(board.turn) if board.is_check() else None
+        # Chess.com's "green" board theme tokens (#EBECD0 / #739552, #ffff33 highlight at 50%).
+        # Pieces are python-chess's open-licensed set; coordinates are drawn inside the squares by the UI.
         return chess.svg.board(
             board,
             orientation=chess.WHITE if g.player_color == "white" else chess.BLACK,
@@ -300,15 +304,26 @@ class CoachService:
             arrows=arrows,
             check=check,
             size=size,
+            coordinates=False,
             colors={
-                "square light": "#ebecd0",
-                "square dark": "#779556",
-                "square light lastmove": "#f5f682",
-                "square dark lastmove": "#b9ca43",
-                "margin": "#262421",
-                "coord": "#bababa",
+                "square light": "#EBECD0",
+                "square dark": "#739552",
+                "square light lastmove": "#F5F682",
+                "square dark lastmove": "#B9CA43",
+                "arrow green": "#81B64Ccc",
             },
         )
+
+
+def _eval_label(e, color: str) -> str:
+    if e.terminal == "checkmate":
+        return "1-0" if (e.cp or 0) > 0 else "0-1"
+    if e.terminal == "draw":
+        return "½-½"
+    cp, mate = e.pov(color)
+    if mate is not None:
+        return f"M{abs(mate)}" if mate > 0 else f"-M{abs(mate)}"
+    return f"{(cp or 0) / 100:+.1f}"
 
 
 def rebind(a: GameAnalysis, gid: str) -> GameAnalysis:

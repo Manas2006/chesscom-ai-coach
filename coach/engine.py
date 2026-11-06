@@ -27,7 +27,7 @@ MATE_CP = 10_000
 PIECE_VALUES = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9, chess.KING: 0}
 PIECE_NAMES = {chess.PAWN: "pawn", chess.KNIGHT: "knight", chess.BISHOP: "bishop", chess.ROOK: "rook", chess.QUEEN: "queen", chess.KING: "king"}
 THRESHOLDS = (("blunder", 20.0), ("mistake", 10.0), ("inaccuracy", 5.0))
-ANALYSIS_VERSION = 5  # bump to invalidate cached analyses when the logic changes
+ANALYSIS_VERSION = 6  # bump to invalidate cached analyses when the logic changes
 
 
 # ---------------------------------------------------------------------------------------------
@@ -60,12 +60,13 @@ def aggregate_accuracy(values: list[float]) -> float | None:
 
 
 def classify(win_drop: float, is_best: bool) -> str:
+    """Chess.com Game Review vocabulary: best / excellent (<2) / good (2-5) / inaccuracy / mistake / blunder."""
     if is_best:
         return "best"
     for name, threshold in THRESHOLDS:
         if win_drop >= threshold:
             return name
-    return "good"
+    return "excellent" if win_drop < 2.0 else "good"
 
 
 def fmt_eval(cp: int | None, mate: int | None) -> str:
@@ -470,7 +471,7 @@ def analyse_game(pool: EnginePool, game: ParsedGame, depth: int, deep_nodes: int
                 break
     mine = [m for m in moves if m.color == game.player_color]
     theirs = [m for m in moves if m.color != game.player_color]
-    counts = {c: sum(m.classification == c for m in mine) for c in ("best", "good", "inaccuracy", "mistake", "blunder")}
+    counts = {c: sum(m.classification == c for m in mine) for c in ("best", "excellent", "good", "inaccuracy", "mistake", "blunder")}
     after_opening = [m.win_after for m in mine if int(m.label.split(".")[0]) > 10] or [m.win_after for m in mine] or [50.0]
     return GameAnalysis(
         gid=game.gid,

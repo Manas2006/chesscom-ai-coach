@@ -14,7 +14,8 @@ def test_classification_bands_follow_chesscom_expected_points():
     assert classify(25, False) == "blunder"
     assert classify(12, False) == "mistake"
     assert classify(6, False) == "inaccuracy"
-    assert classify(2, False) == "good"
+    assert classify(3, False) == "good"
+    assert classify(1, False) == "excellent"
     assert classify(40, True) == "best"
 
 

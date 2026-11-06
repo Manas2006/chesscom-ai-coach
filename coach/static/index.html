@@ -9,16 +9,16 @@
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/" aria-label="Coach home"><span class="knight">♞</span> Coach <span class="for">for Chess.com players</span></a>
+    <a class="brand" href="/" aria-label="Coach home"><span class="knight">♞</span>Coach<span class="for">for Chess.com players</span></a>
     <div class="status" id="status"></div>
   </header>
 
   <main>
     <!-- Landing -->
     <section id="landing" class="landing">
-      <h1>Your games, reviewed by a coach who can't make things up.</h1>
+      <h1>Review your games with a coach that can't make things up.</h1>
       <p class="lede">
-        Enter a Chess.com username. Stockfish analyses your recent games and finds the moments that cost you the most,
+        Enter a Chess.com username. Stockfish analyses your recent games and finds the moves that cost you the most,
         then an AI coach explains the patterns behind them and builds you a plan. Every move it mentions is checked against the engine.
       </p>
       <form id="analyze-form" class="analyze-form" autocomplete="off">
@@ -35,86 +35,103 @@
           <option value="rapid">Rapid</option>
           <option value="daily">Daily</option>
         </select>
-        <button type="submit" class="btn primary">Analyse my games</button>
+        <button type="submit" class="btn primary big">Review My Games</button>
       </form>
       <p class="demo-line">No username handy? <button id="demo-btn" class="linkish" type="button">Try the offline demo with 6 of GothamChess's blitz games</button></p>
       <div id="form-error" class="error hidden"></div>
 
       <ol class="how">
         <li><b>Fetch</b><span>Your latest games from the Chess.com Published Data API, with clock times.</span></li>
-        <li><b>Analyse</b><span>Stockfish evaluates every position, then re-checks your costliest moves more deeply and finds the opponent's punishing reply.</span></li>
-        <li><b>Coach</b><span>An LLM turns the verified facts into patterns and a 7-day plan. It can run Stockfish itself when you ask "what if?".</span></li>
+        <li><b>Analyse</b><span>Stockfish evaluates every position, then re-checks your costliest moves and finds the opponent's punishing reply.</span></li>
+        <li><b>Coach</b><span>An LLM turns the verified facts into patterns and a 7-day plan, and runs Stockfish itself when you ask "what if?".</span></li>
         <li><b>Verify</b><span>Every citation, move and evaluation in the answer is checked against the engine data. Anything unsupported is flagged.</span></li>
       </ol>
     </section>
 
     <!-- Progress -->
-    <section id="progress" class="card progress hidden">
+    <section id="progress" class="panel progress hidden">
       <div class="progress-head"><span id="progress-stage">Starting…</span><span id="progress-pct">0%</span></div>
       <div class="bar"><div id="progress-bar"></div></div>
-      <p class="muted small" id="progress-note">Engine analysis takes about 2 to 4 seconds per game. Results are cached, so a second run is instant.</p>
+      <p class="muted small">Engine analysis takes about 2 to 4 seconds per game. Results are cached, so a second run is instant.</p>
     </section>
 
     <!-- Dashboard -->
     <section id="dashboard" class="hidden">
       <div class="player-row">
-        <div class="card player" id="player-card"></div>
+        <div class="panel player" id="player-card"></div>
         <div class="tiles" id="tiles"></div>
       </div>
 
-      <div class="main-grid">
-        <div class="left-col">
-          <div class="card report">
-            <div class="card-head">
-              <h2>Coach report</h2>
-              <div class="head-right">
-                <span id="grounding-badge"></span>
-                <button id="regen" class="btn ghost small" title="Generate a fresh report">Regenerate</button>
+      <div class="review">
+        <!-- Board column -->
+        <div class="board-col" id="board-col">
+          <div class="game-tabs" id="game-tabs"></div>
+          <div class="board-area">
+            <div class="evalbar" id="evalbar" aria-label="Evaluation bar"><div class="evalbar-fill" id="evalbar-fill"></div><span class="evalbar-score" id="evalbar-score"></span></div>
+            <div class="board-stack">
+              <div class="pbar" id="pbar-top"></div>
+              <div class="board-wrap" id="board-wrap">
+                <img id="board" alt="Chess board" width="560" height="560" />
+                <div class="coords" id="coords"></div>
+                <div class="sq-badge hidden" id="sq-badge"></div>
               </div>
+              <div class="pbar" id="pbar-bottom"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Side panel -->
+        <aside class="side panel">
+          <nav class="tabs" role="tablist">
+            <button class="tab active" data-tab="coach" role="tab">Coach</button>
+            <button class="tab" data-tab="moves" role="tab">Moves</button>
+            <button class="tab" data-tab="chat" role="tab">Ask the coach</button>
+          </nav>
+
+          <div class="tab-body" data-body="coach">
+            <div class="report-head">
+              <span id="grounding-badge"></span>
+              <button id="regen" class="btn ghost small" title="Generate a fresh report">Regenerate</button>
             </div>
             <div id="report-meta" class="muted small"></div>
             <div id="report" class="md"></div>
             <details id="grounding-details" class="grounding hidden"><summary>How this report was checked</summary><div id="grounding-body"></div></details>
           </div>
 
-          <div class="card chat">
-            <div class="card-head"><h2>Ask your coach</h2><span class="muted small">Answers can run Stockfish on demand</span></div>
+          <div class="tab-body hidden" data-body="moves">
+            <div class="acc-row" id="acc-row"></div>
+            <div class="eval-graph" id="eval-graph"></div>
+            <div class="explainer" id="explainer"></div>
+            <div class="moves" id="moves"></div>
+          </div>
+
+          <div class="tab-body hidden" data-body="chat">
             <div id="chat-log" class="chat-log"></div>
             <div id="chat-suggestions" class="suggestions"></div>
             <form id="chat-form" class="chat-form">
-              <input id="chat-input" placeholder="e.g. What if I had played Nxe4 in G1 instead of Qc7?" maxlength="2000" autocomplete="off" />
+              <input id="chat-input" placeholder="e.g. What if I had played Nxe4 instead?" maxlength="2000" autocomplete="off" />
               <button class="btn primary" type="submit">Send</button>
             </form>
           </div>
-        </div>
 
-        <div class="right-col">
-          <div class="card board-card" id="board-card">
-            <div class="game-tabs" id="game-tabs"></div>
-            <div class="game-info" id="game-info"></div>
-            <div class="board-wrap"><img id="board" alt="Chess board" width="400" height="400" /></div>
-            <div class="board-caption" id="board-caption"></div>
-            <div class="nav">
-              <button class="btn ghost" data-nav="start" title="Start (Home)">⏮</button>
-              <button class="btn ghost" data-nav="prev" title="Previous (←)">◀</button>
-              <button class="btn ghost" data-nav="next" title="Next (→)">▶</button>
-              <button class="btn ghost" data-nav="end" title="End (End)">⏭</button>
-            </div>
-            <div class="eval-graph" id="eval-graph"></div>
-            <div class="moves" id="moves"></div>
+          <div class="nav">
+            <button class="btn nav-btn" data-nav="start" title="Start (Home)">⏮</button>
+            <button class="btn nav-btn" data-nav="prev" title="Previous (←)">◀</button>
+            <button class="btn nav-btn" data-nav="next" title="Next (→)">▶</button>
+            <button class="btn nav-btn" data-nav="end" title="End (End)">⏭</button>
           </div>
-        </div>
+        </aside>
       </div>
 
-      <div class="card">
-        <div class="card-head"><h2>Critical moments</h2><span class="muted small">Your costliest moves, re-checked by a deeper search. Red arrow: what you played. Green: the engine's choice.</span></div>
+      <div class="panel section">
+        <div class="section-head"><h2>Key moments</h2><span class="muted small">Your costliest moves, re-checked by a deeper search. Red arrow: what you played. Green: the engine's choice.</span></div>
         <div class="moments" id="moments"></div>
       </div>
 
       <div class="stats-grid">
-        <div class="card"><h3>Accuracy by phase</h3><div id="phases"></div></div>
-        <div class="card"><h3>Recurring patterns</h3><div id="patterns"></div></div>
-        <div class="card"><h3>Openings</h3><div id="openings"></div></div>
+        <div class="panel section"><h3>Accuracy by phase</h3><div id="phases"></div></div>
+        <div class="panel section"><h3>Recurring patterns</h3><div id="patterns"></div></div>
+        <div class="panel section"><h3>Openings</h3><div id="openings"></div></div>
       </div>
       <p class="footnote muted small" id="footnote"></p>
     </section>

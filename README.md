@@ -4,7 +4,7 @@
 
 Enter a Chess.com username. Stockfish analyses your recent games and finds the moves that cost you the most, an LLM explains the patterns behind them and builds a 7-day plan, and **every move, citation and evaluation the LLM writes is checked against the engine before you see it.**
 
-![Dashboard](docs/screenshots/dashboard.png)
+![Coach report next to the board](docs/screenshots/dashboard.png)
 
 The core idea: **Stockfish and plain code decide what is true. The LLM decides what matters and explains why.** LLMs are bad at reading chess positions, so the model never calculates anything: it receives engine-verified facts with stable IDs, can call Stockfish through tools when the player asks "what if?", and its output is mechanically verified, with one automatic repair pass when something does not check out.
 
@@ -42,8 +42,11 @@ docker compose up --build
 - **Writes a coaching report** whose every claim cites a real move as `[[G1 22...Qc7]]`. Citations render as chips that jump the board to that position, with red and green arrows for the played and best moves.
 - **Lets you ask follow-ups.** The chat coach can run Stockfish on demand (`evaluate_move`, `analyze_position`, `get_moment`, `get_game_moves`), and each tool call is shown in the answer.
 - **Shows you how grounded it is.** A badge reports the share of checked claims that passed. Unsupported moves or evaluations are highlighted in the text.
+- **Feels native to Chess.com.** The review screen follows Chess.com's Game Review conventions: eval bar, player bars with the clock at every move, a White-advantage graph, classification badges on the board (best, excellent, good, inaccuracy, mistake, blunder), and a figurine move list with an explanation of the current move. Colors, board theme and radii come from Chess.com's public CSS design tokens. Pieces are python-chess's open-licensed set, and no Chess.com logos, fonts or icon art are bundled.
 
-![Critical moments](docs/screenshots/moments.png)
+![Move-by-move review](docs/screenshots/review.png)
+
+![Key moments](docs/screenshots/moments.png)
 
 ## How it works
 
@@ -64,7 +67,7 @@ flowchart LR
 
 Details, numbers and trade-offs are in **[docs/DESIGN.md](docs/DESIGN.md)**. The short version:
 
-**System design.** FastAPI backend plus a dependency-free single-page UI (boards are SVGs rendered server-side by python-chess, so there is no frontend build step and no CDN). Analysis runs as a background job across a pool of Stockfish processes and is cached on disk per game. Chess.com responses are cached too (past months forever, the current month for 5 minutes), requests are serial with a descriptive User-Agent, and 429s are retried with backoff. LLM providers (Anthropic or OpenAI) are thin raw-HTTP adapters behind one interface with a neutral message format.
+**System design.** FastAPI backend plus a dependency-free single-page UI styled with Chess.com's design tokens (boards are SVGs rendered server-side by python-chess, so there is no frontend build step and no CDN). Analysis runs as a background job across a pool of Stockfish processes and is cached on disk per game. Chess.com responses are cached too (past months forever, the current month for 5 minutes), requests are serial with a descriptive User-Agent, and 429s are retried with backoff. LLM providers (Anthropic or OpenAI) are thin raw-HTTP adapters behind one interface with a neutral message format.
 
 **Context and prompting strategy.**
 1. *Facts, not raw data.* The model never sees a bare PGN to "read". It gets engine verdicts, top lines, the opponent's best reply, clocks, verified pattern tags and pre-computed aggregates. It is told to treat these as exact and never recompute them.
