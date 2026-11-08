@@ -1,0 +1,209 @@
+{
+  "date": "2026-11-08T22:09:42+00:00",
+  "provider": "anthropic",
+  "model": "claude-sonnet-5-5",
+  "dry_run": false,
+  "rows": [
+    {
+      "player": "bobthegreatest123",
+      "games": 8,
+      "run": 1,
+      "ungrounded": {
+        "grounding_score": 1.0,
+        "claims_checked": 34,
+        "citation_validity": 1.0,
+        "citations": 25,
+        "move_legality": 1.0,
+        "recommendation_agreement": null,
+        "eval_support": null,
+        "flagged": [],
+        "words": 672,
+        "latency_s": 46.2,
+        "tokens": 9817
+      },
+      "grounded": {
+        "grounding_score": 1.0,
+        "claims_checked": 37,
+        "citation_validity": 1.0,
+        "citations": 16,
+        "move_legality": 1.0,
+        "recommendation_agreement": 1.0,
+        "eval_support": null,
+        "flagged": [],
+        "words": 617,
+        "latency_s": 11.5,
+        "tokens": 15265,
+        "tool_calls": 0
+      },
+      "grounded_repair": {
+        "grounding_score": 1.0,
+        "claims_checked": 37,
+        "citation_validity": 1.0,
+        "citations": 16,
+        "move_legality": 1.0,
+        "recommendation_agreement": 1.0,
+        "eval_support": null,
+        "flagged": [],
+        "words": 617,
+        "latency_s": 11.5,
+        "tokens": 15265,
+        "repair_triggered": false
+      }
+    },
+    {
+      "player": "bobthegreatest123",
+      "games": 8,
+      "run": 2,
+      "ungrounded": {
+        "grounding_score": 0.935,
+        "claims_checked": 31,
+        "citation_validity": 1.0,
+        "citations": 18,
+        "move_legality": 0.909,
+        "recommendation_agreement": 0.5,
+        "eval_support": null,
+        "flagged": [
+          "Ne5",
+          "10...Bd6"
+        ],
+        "words": 635,
+        "latency_s": 43.7,
+        "tokens": 9554
+      },
+      "grounded": {
+        "grounding_score": 0.949,
+        "claims_checked": 39,
+        "citation_validity": 0.875,
+        "citations": 16,
+        "move_legality": 1.0,
+        "recommendation_agreement": 1.0,
+        "eval_support": 1.0,
+        "flagged": [
+          "[[G5 20.cxd5]] (the move played was 20.f5)",
+          "[[G1 15.f4]] (the move played was 15.Qe3)"
+        ],
+        "words": 646,
+        "latency_s": 21.0,
+        "tokens": 32765,
+        "tool_calls": 0
+      },
+      "grounded_repair": {
+        "grounding_score": 1.0,
+        "claims_checked": 38,
+        "citation_validity": 1.0,
+        "citations": 14,
+        "move_legality": 1.0,
+        "recommendation_agreement": 1.0,
+        "eval_support": 1.0,
+        "flagged": [],
+        "words": 646,
+        "latency_s": 21.0,
+        "tokens": 32765,
+        "repair_triggered": true
+      }
+    },
+    {
+      "player": "gothamchess",
+      "games": 6,
+      "run": 1,
+      "ungrounded": {
+        "grounding_score": 0.872,
+        "claims_checked": 47,
+        "citation_validity": 1.0,
+        "citations": 13,
+        "move_legality": 0.824,
+        "recommendation_agreement": null,
+        "eval_support": null,
+        "flagged": [
+          "18...Bc3",
+          "19.Bxc3",
+          "dxc3",
+          "Nc5",
+          "21.Qxc3",
+          "axb5"
+        ],
+        "words": 618,
+        "latency_s": 52.3,
+        "tokens": 10897
+      },
+      "grounded": {
+        "grounding_score": 1.0,
+        "claims_checked": 45,
+        "citation_validity": 1.0,
+        "citations": 16,
+        "move_legality": 1.0,
+        "recommendation_agreement": 1.0,
+        "eval_support": 1.0,
+        "flagged": [],
+        "words": 743,
+        "latency_s": 13.8,
+        "tokens": 13240,
+        "tool_calls": 0
+      },
+      "grounded_repair": {
+        "grounding_score": 1.0,
+        "claims_checked": 45,
+        "citation_validity": 1.0,
+        "citations": 16,
+        "move_legality": 1.0,
+        "recommendation_agreement": 1.0,
+        "eval_support": 1.0,
+        "flagged": [],
+        "words": 743,
+        "latency_s": 13.8,
+        "tokens": 13240,
+        "repair_triggered": false
+      }
+    },
+    {
+      "player": "gothamchess",
+      "games": 6,
+      "run": 2,
+      "ungrounded": {
+        "grounding_score": 0.97,
+        "claims_checked": 33,
+        "citation_validity": 1.0,
+        "citations": 21,
+        "move_legality": 0.917,
+        "recommendation_agreement": null,
+        "eval_support": null,
+        "flagged": [
+          "Nc3"
+        ],
+        "words": 622,
+        "latency_s": 48.0,
+        "tokens": 10240
+      },
+      "grounded": {
+        "grounding_score": 0.974,
+        "claims_checked": 39,
+        "citation_validity": 1.0,
+        "citations": 18,
+        "move_legality": 1.0,
+        "recommendation_agreement": 0.75,
+        "eval_support": null,
+        "flagged": [
+          "Ra1"
+        ],
+        "words": 653,
+        "latency_s": 26.5,
+        "tokens": 28694,
+        "tool_calls": 0
+      },
+      "grounded_repair": {
+        "grounding_score": 1.0,
+        "claims_checked": 39,
+        "citation_validity": 1.0,
+        "citations": 18,
+        "move_legality": 1.0,
+        "recommendation_agreement": 1.0,
+        "eval_support": null,
+        "flagged": [],
+        "words": 653,
+        "latency_s": 26.5,
+        "tokens": 28694,
+        "repair_triggered": true
+      }
+    }
+  ]
+}
