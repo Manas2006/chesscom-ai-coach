@@ -75,6 +75,7 @@ class Settings:
         "chesscom-ai-coach/1.0 (take-home project; +https://github.com/Manas2006/chesscom-ai-coach)"
     )
     offline: bool = False  # serve fixtures only (no network)
+    demo_player: str | None = None  # fixture shown as the sample review; None = the fixture marked default
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -99,4 +100,5 @@ class Settings:
         if os.environ.get("CHESSCOM_USER_AGENT"):
             s.chesscom_user_agent = os.environ["CHESSCOM_USER_AGENT"]
         s.offline = os.environ.get("COACH_OFFLINE", "").lower() in {"1", "true", "yes"}
+        s.demo_player = os.environ.get("DEMO_PLAYER") or None
         return s

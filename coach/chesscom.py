@@ -157,6 +157,42 @@ class FixtureClient:
     def stats(self, username: str) -> dict:
         return json.loads((self._dir(username) / "player.json").read_text())["stats"]
 
+    def summary(self, username: str) -> dict:
+        """What the landing page needs to describe a sample: display name, game count, time classes."""
+        d = self._dir(username)
+        meta = json.loads((d / "games.json").read_text())
+        games = [g for g in meta["games"] if g.get("rules") == "chess"]
+        profile = json.loads((d / "player.json").read_text()).get("profile") or {}
+        classes = sorted({g.get("time_class", "") for g in games} - {""})
+        # The API's `username` is lower-cased; the member URL keeps the player's own capitalisation.
+        display = (profile.get("url") or "").rstrip("/").rsplit("/", 1)[-1] or profile.get("username") or username
+        return {
+            "player": normalize_username(username),
+            "display_name": display,
+            "games": len(games),
+            "time_classes": classes,
+            "default": bool(meta.get("default")),
+            "has_report": (d / "report.json").exists(),
+        }
+
+    def default_player(self) -> str | None:
+        """The fixture marked `"default": true` in its games.json, else the first one alphabetically."""
+        names = self.usernames()
+        for name in names:
+            if self.summary(name)["default"]:
+                return name
+        return names[0] if names else None
+
+    def report(self, username: str) -> dict | None:
+        """A committed, pre-generated coach report (see `python -m coach.snapshot`), or None."""
+        path = self._dir(username) / "report.json"
+        if not path.exists():
+            return None
+        try:
+            return json.loads(path.read_text())
+        except ValueError:
+            return None
+
     def recent_games(self, username: str, n: int, time_class: str = "all", max_months: int = 12) -> list[dict]:
         d = self._dir(username)
         meta = json.loads((d / "games.json").read_text())["games"]

@@ -1,8 +1,8 @@
 "use strict";
 
 const $ = (s, el = document) => el.querySelector(s);
-const state = { sid: null, data: null, gid: null, ply: -1, mode: "after", health: null, tab: "coach", pz: null, puzzles: null, solved: new Set(), revealed: new Set() };
-const CITE_RE = /\[\[\s*(G\d+\s+\d+\s*(?:\.\.\.|\.)\s*[^\]\s]+)\s*\]\]/g;
+const state = { sid: null, data: null, gid: null, ply: -1, mode: "after", health: null, sample: null, job: null, tab: "coach", pz: null, puzzles: null, solved: new Set(), revealed: new Set() };
+const CITE_RE = /\[\[\s*(G\d+\s+\d+\s*(?:\.\.\.|\.)\s*[^\]\s]*)\s*\]\]/g; // SAN optional, same as the server
 
 /* Game Review vocabulary. Glyphs are standard chess annotation symbols. */
 const CLS = {
@@ -78,6 +78,8 @@ async function loadHealth() {
       ? `<span class="chip ok"><span class="dot"></span>${esc(h.llm.model)}</span>`
       : `<span class="chip warn" title="Set ANTHROPIC_API_KEY or OPENAI_API_KEY in .env"><span class="dot"></span>No LLM key: engine-only mode</span>`;
     $("#status").innerHTML = eng + llm + (h.offline ? `<span class="chip warn"><span class="dot"></span>offline</span>` : "");
+    state.sample = h.sample || null;
+    renderSampleLinks();
     if (!h.engine.ok) showFormError(h.engine.error);
   } catch (e) {
     $("#status").innerHTML = `<span class="chip bad"><span class="dot"></span>server unreachable</span>`;
@@ -93,24 +95,118 @@ function showFormError(msg) {
 
 function show(id) {
   for (const s of ["landing", "progress", "dashboard"]) $("#" + s).classList.toggle("hidden", s !== id);
+  if (id === "landing") $("#bgjob").classList.add("hidden");
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Start an analysis job and poll it. Resolves to the session id, or null if `isCurrent` says the
+ *  caller has moved on (a newer run replaced this one). */
+async function runJob(body, onProgress, isCurrent = () => true) {
+  const { job_id } = await api("/api/analyze", { method: "POST", body: JSON.stringify(body) });
+  for (;;) {
+    await sleep(600);
+    if (!isCurrent()) return null;
+    const j = await api(`/api/jobs/${job_id}`);
+    onProgress(j);
+    if (j.status === "done") return j.session_id;
+    if (j.status === "error") throw new Error(j.error);
+  }
+}
+
+/** The visitor's own analysis. It owns the progress screen until they choose to browse the sample,
+ *  after which it keeps running in the background and reports through the banner. */
 async function start(body) {
   showFormError("");
   show("progress");
   setProgress(0.02, "Starting");
+  const job = { username: body.username, background: false, status: "running", last: null };
+  state.job = job;
   try {
-    const { job_id } = await api("/api/analyze", { method: "POST", body: JSON.stringify(body) });
-    for (;;) {
-      await new Promise((r) => setTimeout(r, 600));
-      const j = await api(`/api/jobs/${job_id}`);
-      setProgress(j.progress, j.stage);
-      if (j.status === "done") return loadSession(j.session_id);
-      if (j.status === "error") throw new Error(j.error);
+    const sid = await runJob(
+      body,
+      (j) => {
+        job.last = j;
+        if (job.background) renderBgJob(job);
+        else setProgress(j.progress, j.stage);
+      },
+      () => state.job === job,
+    );
+    if (sid === null) return;
+    job.status = "done";
+    job.sid = sid;
+    if (job.background) renderBgJob(job);
+    else {
+      state.job = null;
+      await loadSession(sid);
     }
+  } catch (e) {
+    job.status = "error";
+    job.error = e.message;
+    if (job.background) renderBgJob(job);
+    else {
+      state.job = null;
+      show("landing");
+      showFormError(e.message);
+    }
+  }
+}
+
+/** Open the pre-analysed sample review (fixture data, pre-generated report: instant). */
+async function openSample() {
+  const s = state.sample;
+  if (!s) return;
+  if (state.job && state.job.status === "running") state.job.background = true;
+  if (!state.job) {
+    show("progress");
+    setProgress(0.5, `Opening ${s.display_name}'s review`);
+  }
+  try {
+    const sid = await runJob({ username: s.player, games: s.games, time_class: "all", demo: true }, () => {});
+    if (sid) await loadSession(sid);
+    if (state.job) renderBgJob(state.job);
   } catch (e) {
     show("landing");
     showFormError(e.message);
+  }
+}
+
+function renderSampleLinks() {
+  const s = state.sample;
+  $("#demo-line").classList.toggle("hidden", !s);
+  $("#wait-card").classList.toggle("hidden", !s);
+  if (!s) return;
+  const tc = s.time_classes.length === 1 ? ` ${s.time_classes[0]}` : "";
+  $("#demo-btn").textContent = `Browse a sample review: ${s.display_name}'s last ${s.games}${tc} games`;
+  $("#wait-sample").textContent = `Browse ${s.display_name}'s review`;
+  $("#wait-text").textContent = `Look through ${s.display_name}'s ${s.games}${tc} games and coach report. Your own analysis keeps running and a banner will tell you when it is ready.`;
+}
+
+function renderBgJob(job) {
+  const el = $("#bgjob");
+  if (!job || !job.background) {
+    el.classList.add("hidden");
+    return;
+  }
+  el.classList.remove("hidden");
+  el.classList.toggle("ready", job.status === "done");
+  el.classList.toggle("failed", job.status === "error");
+  if (job.status === "running") {
+    const j = job.last || { progress: 0.02, stage: "Starting" };
+    el.innerHTML = `<span class="spinner"></span><span>Analysing <b>${esc(job.username)}</b>'s games: ${esc(j.stage)}</span><div class="bar"><div style="width:${Math.round(j.progress * 100)}%"></div></div><span class="muted">${Math.round(j.progress * 100)}%</span>`;
+  } else if (job.status === "done") {
+    el.innerHTML = `<span>✓ <b>${esc(job.username)}</b>'s review is ready.</span><button type="button" class="btn primary" id="bgjob-open">Open my review</button>`;
+    $("#bgjob-open").onclick = () => {
+      state.job = null;
+      renderBgJob(null);
+      loadSession(job.sid);
+    };
+  } else {
+    el.innerHTML = `<span>Could not analyse <b>${esc(job.username)}</b>: ${esc(job.error || "unknown error")}</span><button type="button" class="btn dismiss" id="bgjob-dismiss">Dismiss</button>`;
+    $("#bgjob-dismiss").onclick = () => {
+      state.job = null;
+      renderBgJob(null);
+    };
   }
 }
 
@@ -613,7 +709,7 @@ function renderReport(rep) {
   const u = rep.usage || {};
   $("#report-meta").innerHTML =
     rep.mode === "llm"
-      ? `${esc(rep.model)} · ${rep.latency_s}s · ${(u.input_tokens || 0) + (u.output_tokens || 0)} tokens · ${rep.trace.length} engine tool call${rep.trace.length === 1 ? "" : "s"}${rep.repaired ? " · revised after verification" : ""}`
+      ? `${esc(rep.model)} · ${rep.latency_s}s · ${(u.input_tokens || 0) + (u.output_tokens || 0)} tokens · ${rep.trace.length} engine tool call${rep.trace.length === 1 ? "" : "s"}${rep.repaired ? " · revised after verification" : ""}${rep.pregenerated ? ` · sample report generated ${esc((rep.generated_at || "").slice(0, 10))}` : ""}`
       : rep.error ? `<span class="c-mistake">${esc(rep.error)}</span>` : "";
 }
 $("#regen").onclick = () => loadReport(true);
@@ -830,7 +926,8 @@ $("#analyze-form").onsubmit = (e) => {
   e.preventDefault();
   start({ username: $("#username").value.trim(), games: +$("#ngames").value, time_class: $("#tclass").value, demo: false });
 };
-$("#demo-btn").onclick = () => start({ username: "gothamchess", games: 6, time_class: "all", demo: true });
+$("#demo-btn").onclick = () => openSample();
+$("#wait-sample").onclick = () => openSample();
 
 (async function boot() {
   await loadHealth();
@@ -843,6 +940,6 @@ $("#demo-btn").onclick = () => start({ username: "gothamchess", games: 6, time_c
       history.replaceState(null, "", "/");
     }
   }
-  if (q.get("demo")) start({ username: "gothamchess", games: 6, time_class: "all", demo: true });
+  if (q.get("demo")) openSample();
   else if (q.get("u")) start({ username: q.get("u"), games: +(q.get("n") || 10), time_class: q.get("tc") || "all", demo: false });
 })();

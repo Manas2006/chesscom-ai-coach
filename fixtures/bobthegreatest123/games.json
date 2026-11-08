@@ -1,0 +1,206 @@
+{
+  "source": "https://api.chess.com/pub/player/bobthegreatest123/games/{2026/11,2026/09,2026/08} (fetched 2026-11-08 through the author's browser; the 10 most recent standard-chess games, 5 bullet + 5 rapid, PGNs stored verbatim in pgn/)",
+  "default": true,
+  "games": [
+    {
+      "uuid": "5e8622a9-d7b4-11f1-9db9-d43d3b01000f",
+      "url": "https://www.chess.com/game/live/186478422346",
+      "time_control": "60",
+      "time_class": "bullet",
+      "rules": "chess",
+      "rated": true,
+      "end_time": 1793730576,
+      "eco": "https://www.chess.com/openings/Owens-Defense-2.d4-Bb7-3.Nc3",
+      "white": {
+        "username": "BobtheGreatest123",
+        "rating": 712,
+        "result": "win"
+      },
+      "black": {
+        "username": "demain6",
+        "rating": 690,
+        "result": "checkmated"
+      }
+    },
+    {
+      "uuid": "52884654-b5fa-11f1-bb1f-e68c2101000f",
+      "url": "https://www.chess.com/game/live/184174936336",
+      "time_control": "60",
+      "time_class": "bullet",
+      "rules": "chess",
+      "rated": true,
+      "end_time": 1790022329,
+      "eco": "https://www.chess.com/openings/Scandinavian-Defense-Closed-2...dxe4-3.Nxe4",
+      "white": {
+        "username": "TheGreatHarsStudent",
+        "rating": 738,
+        "result": "win"
+      },
+      "black": {
+        "username": "BobtheGreatest123",
+        "rating": 691,
+        "result": "timeout"
+      }
+    },
+    {
+      "uuid": "6b8758d6-acbb-11f1-bbdf-8eeeee01000f",
+      "url": "https://www.chess.com/game/live/174251331064",
+      "time_control": "60",
+      "time_class": "bullet",
+      "rules": "chess",
+      "rated": true,
+      "end_time": 1789005739,
+      "eco": "https://www.chess.com/openings/Queens-Pawn-Opening-English-Rat-Defense-3.Nc3-exd4-4.Qxd4-Nf6",
+      "white": {
+        "username": "BobtheGreatest123",
+        "rating": 708,
+        "result": "timeout"
+      },
+      "black": {
+        "username": "Duggsito",
+        "rating": 755,
+        "result": "win"
+      }
+    },
+    {
+      "uuid": "457d1497-aba3-11f1-8cd6-ece1e601000f",
+      "url": "https://www.chess.com/game/live/174184337450",
+      "time_control": "60",
+      "time_class": "bullet",
+      "rules": "chess",
+      "rated": true,
+      "end_time": 1788885431,
+      "eco": "https://www.chess.com/openings/Caro-Kann-Defense-Advance-Botvinnik-Carls-Defense-4.Nf3-Nc6",
+      "white": {
+        "username": "sofianelgarti",
+        "rating": 767,
+        "result": "win"
+      },
+      "black": {
+        "username": "BobtheGreatest123",
+        "rating": 724,
+        "result": "timeout"
+      }
+    },
+    {
+      "uuid": "bdb9bfbe-aba0-11f1-9f37-3022bd01000f",
+      "url": "https://www.chess.com/game/live/174183497466",
+      "time_control": "60",
+      "time_class": "bullet",
+      "rules": "chess",
+      "rated": true,
+      "end_time": 1788884361,
+      "eco": "https://www.chess.com/openings/English-Opening-Caro-Kann-Defensive-System-2.Nc3-d5",
+      "white": {
+        "username": "BobtheGreatest123",
+        "rating": 741,
+        "result": "win"
+      },
+      "black": {
+        "username": "SpeckledPonytail",
+        "rating": 687,
+        "result": "timeout"
+      }
+    },
+    {
+      "uuid": "dfd489e8-ab1f-11f1-8acf-f45fe701000f",
+      "url": "https://www.chess.com/game/live/174152967858",
+      "time_control": "600",
+      "time_class": "rapid",
+      "rules": "chess",
+      "rated": true,
+      "end_time": 1788829995,
+      "eco": "https://www.chess.com/openings/Queens-Pawn-Opening-Chigorin-Variation-2...Nf6-3.Bf4-e6",
+      "white": {
+        "username": "Yusif19511",
+        "rating": 813,
+        "result": "resigned"
+      },
+      "black": {
+        "username": "BobtheGreatest123",
+        "rating": 827,
+        "result": "win"
+      }
+    },
+    {
+      "uuid": "c6f569e2-a745-11f1-baf2-8a56cc01000f",
+      "url": "https://www.chess.com/game/live/173917769298",
+      "time_control": "600",
+      "time_class": "rapid",
+      "rules": "chess",
+      "rated": true,
+      "end_time": 1788405883,
+      "eco": "https://www.chess.com/openings/Sicilian-Defense-Nyezhmetdinov-Rossolimo-Attack",
+      "white": {
+        "username": "IsaFs",
+        "rating": 789,
+        "result": "checkmated"
+      },
+      "black": {
+        "username": "BobtheGreatest123",
+        "rating": 818,
+        "result": "win"
+      }
+    },
+    {
+      "uuid": "0fc6f3ac-a743-11f1-856c-7c639201000f",
+      "url": "https://www.chess.com/game/live/173917314430",
+      "time_control": "600",
+      "time_class": "rapid",
+      "rules": "chess",
+      "rated": true,
+      "end_time": 1788405049,
+      "eco": "https://www.chess.com/openings/Queens-Gambit-Accepted-Mannheim-Variation",
+      "white": {
+        "username": "BobtheGreatest123",
+        "rating": 809,
+        "result": "win"
+      },
+      "black": {
+        "username": "albajadmama",
+        "rating": 782,
+        "result": "resigned"
+      }
+    },
+    {
+      "uuid": "4f5f4d4b-98ee-11f1-90cc-625e5f01000f",
+      "url": "https://www.chess.com/game/live/173046568182",
+      "time_control": "600",
+      "time_class": "rapid",
+      "rules": "chess",
+      "rated": true,
+      "end_time": 1786828818,
+      "eco": "https://www.chess.com/openings/Scandinavian-Defense-Mieses-Kotrc-Variation-3.Nc3-Qd8-4.d4-Nf6-5.Nf3",
+      "white": {
+        "username": "Satsu_1",
+        "rating": 812,
+        "result": "win"
+      },
+      "black": {
+        "username": "BobtheGreatest123",
+        "rating": 800,
+        "result": "checkmated"
+      }
+    },
+    {
+      "uuid": "9e7186e2-98ec-11f1-a476-59664c01000f",
+      "url": "https://www.chess.com/game/live/173046180314",
+      "time_control": "600",
+      "time_class": "rapid",
+      "rules": "chess",
+      "rated": true,
+      "end_time": 1786828467,
+      "eco": "https://www.chess.com/openings/Queens-Gambit-Declined-Baltic-Defense-3.Nc3-e6-4.Nf3-Nf6-5.Bg5",
+      "white": {
+        "username": "BobtheGreatest123",
+        "rating": 808,
+        "result": "timeout"
+      },
+      "black": {
+        "username": "Jan9e",
+        "rating": 838,
+        "result": "win"
+      }
+    }
+  ]
+}

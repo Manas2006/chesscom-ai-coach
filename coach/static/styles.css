@@ -308,3 +308,13 @@ table.op td, table.op th { padding: 6px 4px; border-bottom: 1px solid var(--whit
   .brand .for { display: none; }
   .game-tabs { margin-left: 0; }
 }
+
+/* ---- sample review while a job runs ---- */
+.wait-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 18px; padding: 14px 16px; border-radius: 5px; background: var(--site-bg); border: 1px solid var(--white-10); }
+.wait-card p { margin: 4px 0 0; }
+.bgjob { display: flex; align-items: center; gap: 14px; margin: 0 0 14px; padding: 10px 16px; border-radius: 5px; background: var(--gray-900); border: 1px solid var(--white-10); font-size: 14px; }
+.bgjob .bar { flex: 1; height: 6px; margin: 0; max-width: 220px; }
+.bgjob.ready { border-color: var(--green-300); }
+.bgjob.failed { border-color: #FA412D; }
+.bgjob .btn { padding: 6px 12px; font-size: 13px; }
+.bgjob .dismiss { margin-left: auto; }

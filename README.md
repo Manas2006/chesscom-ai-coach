@@ -16,7 +16,7 @@ The core idea: **Stockfish and plain code decide what is true. The LLM decides w
 docker compose up --build
 ```
 
-Open http://localhost:8000 and type any Chess.com username, or click **Try the offline demo** (6 real GothamChess blitz games bundled in `fixtures/`, works with no network).
+Open http://localhost:8000 and type any Chess.com username, or click **Browse a sample review** (real games bundled in `fixtures/`: the author's own last 10 games, plus 6 GothamChess blitz games used by the tests; works with no network).
 
 **Add the AI coach (optional):** without a key the app runs in engine-only mode (full analysis plus a deterministic template report; chat disabled). For the LLM coach:
 
@@ -25,7 +25,9 @@ cp .env.example .env   # then set ANTHROPIC_API_KEY=... (or OPENAI_API_KEY=...)
 docker compose up --build
 ```
 
-**Hosted:** the Deploy to Render button builds the same image from `render.yaml`. The demo games are pre-analysed during the build, so they load instantly even on the free plan. Paste an API key in the Render dashboard; `LLM_RATE_LIMIT_PER_HOUR` (20 per visitor by default there) protects your budget on a public link.
+**Hosted:** [chesscom-ai-coach.onrender.com](https://chesscom-ai-coach.onrender.com). It runs on Render's free tier, which puts the instance to sleep after a period of inactivity, so **the first load can take a minute or so** while it wakes up; after that it is quick. The Deploy to Render button builds the same image from `render.yaml`. Paste an API key in the Render dashboard; `LLM_RATE_LIMIT_PER_HOUR` (20 per visitor by default there) protects your budget on a public link.
+
+**Sample review:** the landing page offers a pre-analysed review of a real account (fixture data under `fixtures/`, engine analysis done at build time, coach report frozen in `fixtures/<player>/report.json`), so there is something to look through while your own games are being analysed: a banner tells you when yours is ready. `DEMO_PLAYER` picks which fixture is shown; `python -m coach.snapshot <player>` refreshes the frozen report.
 
 **Without Docker:** install Stockfish (`brew install stockfish` or `apt install stockfish`) and [uv](https://docs.astral.sh/uv/), then `make run`.
 
@@ -36,6 +38,7 @@ docker compose up --build
 | `make test` | 160 tests: parsing, engine, motif tags, verifier, agent loop, streaming and provider wire formats, practice mode, rate limit, HTTP API, plus edge cases (mate and stalemate games, daily games, malformed API data, sloppy tool arguments, bad requests) |
 | `make eval` | Grounded vs ungrounded ablation (needs an API key), writes `evals/RESULTS.md` |
 | `make eval-dry` | Exercise the eval harness without an API key |
+| `python -m coach.snapshot <player>` | Freeze the coach report for a fixture player into `fixtures/<player>/report.json` (the instant sample review) |
 
 ## What it does
 
@@ -139,7 +142,7 @@ coach/
   warm.py       pre-analyses the demo games at docker build time
   service.py    jobs, caching, orchestration, board rendering
   server.py     FastAPI routes; static/ holds the UI
-fixtures/       6 real GothamChess games + profile from the Chess.com API
+fixtures/       real games + profiles from the Chess.com API (sample review, tests), one directory per player
 evals/          grounded vs ungrounded ablation
 tests/          pytest suite (Stockfish required)
 docs/           DESIGN.md, AI_USAGE.md, screenshots

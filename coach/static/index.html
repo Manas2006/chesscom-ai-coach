@@ -37,7 +37,7 @@
         </select>
         <button type="submit" class="btn primary big">Review My Games</button>
       </form>
-      <p class="demo-line">No username handy? <button id="demo-btn" class="linkish" type="button">Try the offline demo with 6 of GothamChess's blitz games</button></p>
+      <p class="demo-line" id="demo-line">No username handy? <button id="demo-btn" class="linkish" type="button">Browse a sample review</button></p>
       <div id="form-error" class="error hidden"></div>
 
       <ol class="how">
@@ -48,11 +48,21 @@
       </ol>
     </section>
 
+    <!-- Background job banner (shown while the visitor browses the sample and their own analysis runs) -->
+    <div id="bgjob" class="bgjob hidden" role="status"></div>
+
     <!-- Progress -->
     <section id="progress" class="panel progress hidden">
       <div class="progress-head"><span id="progress-stage">Starting…</span><span id="progress-pct">0%</span></div>
       <div class="bar"><div id="progress-bar"></div></div>
       <p class="muted small">Engine analysis takes about 2 to 4 seconds per game. Results are cached, so a second run is instant.</p>
+      <div class="wait-card hidden" id="wait-card">
+        <div>
+          <b>While you wait</b>
+          <p class="muted small" id="wait-text">Browse a sample review. Your own analysis keeps running and a banner will tell you when it is ready.</p>
+        </div>
+        <button type="button" class="btn" id="wait-sample">Browse the sample</button>
+      </div>
     </section>
 
     <!-- Dashboard -->

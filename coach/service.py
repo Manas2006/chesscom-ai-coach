@@ -57,7 +57,9 @@ class CoachService:
         self.sessions: dict[str, CoachSession] = {}
         self._analysis_dir = Path(settings.cache_dir) / "analysis"
         self._analysis_dir.mkdir(parents=True, exist_ok=True)
-        self._jobs_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="job")
+        # Jobs mostly wait on the engine threads below; a few extra job slots keep a fully cached
+        # request (the sample review) from queueing behind someone else's live analysis.
+        self._jobs_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="job")
         self._engine_threads = ThreadPoolExecutor(max_workers=settings.engine_workers, thread_name_prefix="engine")
         self._locks: dict[str, threading.Lock] = {}
         self._llm_calls: dict[str, deque] = defaultdict(deque)
@@ -89,7 +91,28 @@ class CoachService:
             "llm": {"provider": self.provider.name if self.provider else None, "model": self.provider.model if self.provider else None},
             "offline": self.settings.offline,
             "demo_players": self.fixtures.usernames(),
+            "sample": self.sample_info(),
         }
+
+    def sample_info(self) -> dict | None:
+        """The fixture the UI offers as a browsable sample review (landing page and while a job runs)."""
+        wanted = self.settings.demo_player
+        names = self.fixtures.usernames()
+        if wanted and wanted.lower() in names:
+            name = wanted.lower()
+        else:
+            name = self.fixtures.default_player()
+        return self.fixtures.summary(name) if name else None
+
+    def _seed_report(self, session: CoachSession) -> None:
+        """Attach the committed report for a fixture session when it was generated for exactly these
+        games under the current analysis logic, so the sample is instant even without an API key."""
+        snap = self.fixtures.report(session.username)
+        if not snap:
+            return
+        same_games = [g.uuid for g in session.games] == snap.get("game_uuids")
+        if snap.get("analysis_version") == ANALYSIS_VERSION and same_games and isinstance(snap.get("report"), dict):
+            session.report = dict(snap["report"], pregenerated=True, generated_at=snap.get("generated_at"), generated_with=snap.get("engine"))
 
     # -- analysis jobs ---------------------------------------------------------------------------
     def start(self, username: str, n_games: int = 10, time_class: str = "all", demo: bool = False) -> Job:
@@ -145,6 +168,8 @@ class CoachService:
                 engine_name=self.engine_name,
                 source="fixture" if demo else "live",
             )
+            if demo:
+                self._seed_report(session)
             self.sessions[session.sid] = session
             job.session_id, job.status, job.stage, job.progress = session.sid, "done", "Done", 1.0
         except Exception as exc:
@@ -240,6 +265,7 @@ class CoachService:
             games.append(
                 {
                     "gid": g.gid,
+                    "uuid": g.uuid,
                     "url": g.url,
                     "date": g.date,
                     "time_class": g.time_class,
@@ -296,6 +322,7 @@ class CoachService:
             "username": s.username,
             "source": s.source,
             "engine": s.engine_name,
+            "analysis_version": ANALYSIS_VERSION,
             "profile": s.profile,
             "games": games,
             "moments": moments,
