@@ -31,10 +31,11 @@ def rating_band(rating: int | None) -> str:
 
 
 def build_profile(username: str, profile: dict, stats: dict, games: list[ParsedGame], analyses: dict[str, GameAnalysis]) -> dict:
+    profile, stats = profile or {}, stats or {}
     ratings = {}
     for key, label in RATING_KEYS.items():
         s = stats.get(key)
-        if s and s.get("last"):
+        if isinstance(s, dict) and isinstance(s.get("last"), dict):
             ratings[label] = {
                 "current": s["last"].get("rating"),
                 "best": (s.get("best") or {}).get("rating"),

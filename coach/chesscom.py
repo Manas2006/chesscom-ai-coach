@@ -34,9 +34,23 @@ def normalize_username(username: str) -> str:
     return username.lower()
 
 
+MAX_RETRY_WAIT_S = 30.0
+
+
+def _retry_after(header: str | None, fallback: float) -> float:
+    """Seconds to wait from a Retry-After header. HTTP-date values and junk fall back to our own backoff."""
+    try:
+        wait = float(header) if header is not None else fallback
+    except ValueError:
+        wait = fallback
+    return max(0.0, min(wait, MAX_RETRY_WAIT_S))
+
+
 def _filter_games(games: Iterable[dict], time_class: str) -> list[dict]:
     out = []
     for g in games:
+        if not isinstance(g, dict):
+            continue
         if g.get("rules") != "chess":  # skip chess960, bughouse, etc.
             continue
         if time_class != "all" and g.get("time_class") != time_class:
@@ -74,15 +88,22 @@ class ChessComClient:
                 resp = self.http.get(url)
             except httpx.HTTPError as exc:
                 raise ChessComError(f"Could not reach Chess.com ({exc.__class__.__name__}). Try demo mode.") from exc
-            if resp.status_code == 429 and attempt < 3:
-                time.sleep(float(resp.headers.get("Retry-After", delay)))
+            if resp.status_code == 429:
+                if attempt == 3:
+                    break
+                time.sleep(_retry_after(resp.headers.get("Retry-After"), delay))
                 delay *= 2
                 continue
             if resp.status_code in (404, 410):
                 raise PlayerNotFound("Chess.com has no player with that username")
             if resp.status_code != 200:
                 raise ChessComError(f"Chess.com API returned HTTP {resp.status_code} for {url}")
-            data = resp.json()
+            try:
+                data = resp.json()
+            except ValueError as exc:
+                raise ChessComError(f"Chess.com API returned a non-JSON response for {url}") from exc
+            if not isinstance(data, dict):
+                raise ChessComError(f"Chess.com API returned an unexpected payload for {url}")
             path.write_text(json.dumps({"t": time.time(), "data": data}))
             return data
         raise ChessComError("Chess.com rate limit: please retry in a minute")
@@ -104,7 +125,7 @@ class ChessComClient:
 
     def recent_games(self, username: str, n: int, time_class: str = "all", max_months: int = 12) -> list[dict]:
         archives = self.archives(username)
-        if not archives:
+        if not archives or n <= 0 or max_months <= 0:
             return []
         collected: list[dict] = []
         for i, url in enumerate(reversed(archives[-max_months:])):

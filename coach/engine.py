@@ -27,7 +27,7 @@ MATE_CP = 10_000
 PIECE_VALUES = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9, chess.KING: 0}
 PIECE_NAMES = {chess.PAWN: "pawn", chess.KNIGHT: "knight", chess.BISHOP: "bishop", chess.ROOK: "rook", chess.QUEEN: "queen", chess.KING: "king"}
 THRESHOLDS = (("blunder", 20.0), ("mistake", 10.0), ("inaccuracy", 5.0))
-ANALYSIS_VERSION = 7  # bump to invalidate cached analyses when the logic changes
+ANALYSIS_VERSION = 8  # bump to invalidate cached analyses when the logic changes
 
 
 # ---------------------------------------------------------------------------------------------
@@ -110,6 +110,10 @@ class PosEval:
     def win(self, color: str) -> float:
         if self.terminal == "draw":
             return 50.0
+        if self.terminal == "checkmate":
+            # Decided on the board: 100/0, not the 97.5/2.5 the clamped logistic curve would give.
+            white_won = (self.cp or 0) > 0
+            return 100.0 if (color == "white") == white_won else 0.0
         cp, mate = self.pov(color)
         return win_pct(cp, mate)
 
@@ -300,8 +304,9 @@ def _pos_eval(info: dict, board: chess.Board) -> PosEval:
     )
 
 
-def evaluate_positions(eng: chess.engine.SimpleEngine, game: ParsedGame, depth: int) -> list[PosEval]:
-    """Fixed-depth pass. Passing `game=` makes python-chess send `ucinewgame` (hash reset) when the game changes."""
+def evaluate_positions(eng: chess.engine.SimpleEngine, game: ParsedGame, depth: int, token: object | None = None) -> list[PosEval]:
+    """Fixed-depth pass. `token` is passed as python-chess's `game=`: the engine gets `ucinewgame` (a hash
+    reset) when it changes, so every analysis run starts from the same empty hash and is reproducible."""
     board = chess.Board(game.start_fen)
     out: list[PosEval] = []
     positions = [board.copy()]
@@ -313,7 +318,7 @@ def evaluate_positions(eng: chess.engine.SimpleEngine, game: ParsedGame, depth: 
         if term:
             out.append(term)
             continue
-        info = eng.analyse(b, chess.engine.Limit(depth=depth), game=game.uuid)
+        info = eng.analyse(b, chess.engine.Limit(depth=depth), game=token or game.uuid)
         out.append(_pos_eval(info, b))
     return out
 
@@ -408,7 +413,7 @@ def pick_candidate_moments(moves: list[MoveAnalysis], color: str, limit: int = 3
 
 
 def build_moment(
-    eng, game: ParsedGame, ply: Ply, ma: MoveAnalysis, deep_nodes: int, refutation_nodes: int
+    eng, game: ParsedGame, ply: Ply, ma: MoveAnalysis, deep_nodes: int, refutation_nodes: int, token: object | None = None
 ) -> tuple[CriticalMoment | None, float]:
     """Deep-analyse one candidate. Returns (moment or None if the deep search clears the move, deep win% drop)."""
     from .motifs import tag_moment  # local import to avoid a cycle
@@ -416,8 +421,9 @@ def build_moment(
     before = chess.Board(ply.fen_before)
     after = chess.Board(ply.fen_after)
     opp = "black" if ply.color == "white" else "white"
-    best_lines = analyse_lines(eng, before, ply.color, deep_nodes, multipv=3, game=game.uuid)
-    refutation_lines = analyse_lines(eng, after, ply.color, refutation_nodes, multipv=1, game=game.uuid)
+    token = token or game.uuid
+    best_lines = analyse_lines(eng, before, ply.color, deep_nodes, multipv=3, game=token)
+    refutation_lines = analyse_lines(eng, after, ply.color, refutation_nodes, multipv=1, game=token)
     refutation = refutation_lines[0] if refutation_lines else None
 
     win_before, win_after, win_drop = ma.win_before, ma.win_after, ma.win_drop
@@ -469,12 +475,15 @@ def build_moment(
 
 
 def analyse_game(pool: EnginePool, game: ParsedGame, depth: int, deep_nodes: int, refutation_nodes: int) -> GameAnalysis:
+    # One fresh token per run: the hash is reset at the start of the run and kept for the rest of
+    # it, so analysing the same game twice in a row on the same engine gives identical results.
+    token = object()
     with pool.engine() as eng:
-        evals = evaluate_positions(eng, game, depth)
+        evals = evaluate_positions(eng, game, depth, token)
         moves = _move_analyses(game, evals)
         moments: list[CriticalMoment] = []
         for ma in pick_candidate_moments(moves, game.player_color, limit=5):
-            moment, deep_drop = build_moment(eng, game, game.plies[ma.ply], ma, deep_nodes, refutation_nodes)
+            moment, deep_drop = build_moment(eng, game, game.plies[ma.ply], ma, deep_nodes, refutation_nodes, token)
             # The deep pass is the better measurement: write it back so per-move stats, the eval
             # chart labels and the critical moments never disagree.
             ma.win_drop = deep_drop

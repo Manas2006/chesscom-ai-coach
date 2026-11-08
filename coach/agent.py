@@ -70,6 +70,13 @@ def _clock(s: float | None) -> str:
     return "" if s is None else f"{int(s // 60)}:{int(s % 60):02d}"
 
 
+def _to_int(value, default: int) -> int:
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
 class Toolbox:
     def __init__(self, session: CoachSession, pool: EnginePool, settings: Settings):
         self.s, self.pool, self.settings = session, pool, settings
@@ -94,7 +101,7 @@ class Toolbox:
         return out
 
     def _resolve(self, ref: str):
-        t = self.s.resolve_ref(ref)
+        t = self.s.resolve_ref(str(ref or ""))
         if t is None:
             raise ValueError(f"'{ref}' does not match any move in these games. Use the format 'G1 22...Qc7' or 'G1 22...'.")
         return t
@@ -104,11 +111,15 @@ class Toolbox:
 
     # -- tools ------------------------------------------------------------------------------
     def get_game_moves(self, game_id: str, from_move: int = 1, to_move: int | None = None) -> str:
-        g = self.s.game(game_id)
+        g = self.s.game(str(game_id))
         if not g:
             return f"No game '{game_id}'. Games are " + ", ".join(x.gid for x in self.s.games)
         a = self.s.analyses[g.gid]
-        to_move = to_move or from_move + 29
+        # Models sometimes send numbers as strings; be forgiving rather than failing the call.
+        from_move = max(1, _to_int(from_move, 1))
+        to_move = _to_int(to_move, 0) or from_move + 29
+        if to_move < from_move:
+            from_move, to_move = to_move, from_move
         rows = [
             f"{g.gid}: {g.white} (White) vs {g.black} (Black), {g.player} played {g.player_color}, result for {g.player}: "
             f"{g.outcome} ({g.end_reason}). Evals are from {g.player}'s side."
@@ -121,7 +132,7 @@ class Toolbox:
             cp, mate = ev.pov(g.player_color)
             evs = "mate" if ev.terminal == "checkmate" else ("draw" if ev.terminal == "draw" else fmt_eval(cp, mate))
             extra = ""
-            if mv.classification in ("inaccuracy", "mistake", "blunder"):
+            if mv.classification in ("inaccuracy", "mistake", "miss", "blunder"):
                 extra = f" {mv.classification}" + (f" (engine: {mv.best_san})" if mv.best_san else "")
             clk = f" [{_clock(p.clock)}]" if p.clock is not None else ""
             rows.append(f"{p.label}{clk} {evs}{extra}")
@@ -176,8 +187,11 @@ class Toolbox:
         t = self._resolve(ref)
         board = chess.Board(t.ply.fen_before)
         mover = t.ply.color
+        move = str(move or "")
         try:
             mv = board.parse_san(clean_san(move))
+            if mv not in board.legal_moves:  # parse_san accepts the null move "--"
+                raise ValueError(move)
         except ValueError:
             legal = ", ".join(sorted(board.san(m) for m in board.legal_moves))
             return f"'{move}' is not a legal move in the position before {t.ply.label}. Legal moves: {legal}"
@@ -249,19 +263,23 @@ def run_agent(
     history = list(history)
     res = AgentResult(text="")
     tools = TOOLS if use_tools else []
+    max_rounds = max(0, max_rounds)
     for round_no in range(max_rounds + 1):
-        if round_no == max_rounds and tools:
+        # Last round: the model has to answer in prose. The provider is told not to call tools
+        # (tool_choice none) and the history says why, so the answer never comes back empty.
+        final = round_no == max_rounds
+        if final and tools and round_no > 0:
             history.append({"role": "user", "text": "Tool budget used up. Answer now using only what you already have."})
         if on_event and hasattr(provider, "stream"):
             on_event({"type": "round"})
-            resp: LLMResponse = provider.stream(system, history, tools, lambda t: on_event({"type": "delta", "text": t}))
+            resp: LLMResponse = provider.stream(system, history, tools, lambda t: on_event({"type": "delta", "text": t}), force_text=final)
         else:
-            resp = provider.complete(system, history, tools)
+            resp = provider.complete(system, history, tools, force_text=final)
         res.rounds += 1
         res.input_tokens += resp.input_tokens
         res.output_tokens += resp.output_tokens
         history.append({"role": "assistant", "text": resp.text, "tool_calls": resp.tool_calls})
-        if not resp.tool_calls or round_no == max_rounds:
+        if not resp.tool_calls or final:
             res.text = resp.text.strip()
             return res
         results = []

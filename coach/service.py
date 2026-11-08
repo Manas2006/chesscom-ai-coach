@@ -327,22 +327,36 @@ class CoachService:
             mv = chess.Move.from_uci(uci)
             return chess.svg.Arrow(mv.from_square, mv.to_square, color=color)
 
+        def legal(board: chess.Board, uci: str | None) -> chess.Move | None:
+            """A caller-supplied move, or None if it is malformed or illegal here (never an error)."""
+            if not uci:
+                return None
+            try:
+                mv = chess.Move.from_uci(uci)
+            except ValueError:
+                return None
+            if board.is_legal(mv):
+                return mv
+            # Bare pawn promotions ("e7e8") arrive without a piece from the board UI.
+            promo = chess.Move(mv.from_square, mv.to_square, promotion=chess.QUEEN)
+            return promo if board.is_legal(promo) else None
+
         if mode == "puzzle" and ply >= 0:
             # Practice: the position before the player's mistake, with no engine hints drawn.
             p = g.plies[ply]
             board = chess.Board(p.fen_before)
             last = chess.Move.from_uci(g.plies[ply - 1].uci) if ply > 0 else None
-            if attempt:
-                mv = chess.Move.from_uci(attempt)
-                if board.is_legal(mv):
-                    board.push(mv)
-                    last = mv
-                    if reply:
-                        r = chess.Move.from_uci(reply)
-                        if board.is_legal(r):
-                            arrows.append(arrow(reply, "#FA412Dcc"))
-            elif reveal and board.is_legal(chess.Move.from_uci(reveal)):
-                arrows.append(arrow(reveal, "#81B64Ccc"))
+            mv = legal(board, attempt)
+            if mv:
+                board.push(mv)
+                last = mv
+                r = legal(board, reply)
+                if r:
+                    arrows.append(arrow(r.uci(), "#FA412Dcc"))
+            else:
+                rv = legal(board, reveal)
+                if rv:
+                    arrows.append(arrow(rv.uci(), "#81B64Ccc"))
             fill = {}
             if mark:
                 try:
@@ -374,7 +388,7 @@ class CoachService:
             p = g.plies[ply]
             board, last = chess.Board(p.fen_after), chess.Move.from_uci(p.uci)
             bu = best_for(ply)
-            if bu and bu != p.uci and a.moves[ply].classification in ("inaccuracy", "mistake", "blunder"):
+            if bu and bu != p.uci and a.moves[ply].classification in ("inaccuracy", "mistake", "miss", "blunder"):
                 arrows.append(arrow(bu, "#81B64Ccc"))
         check = board.king(board.turn) if board.is_check() else None
         # Chess.com's "green" board theme tokens (#EBECD0 / #739552, #ffff33 highlight at 50%).

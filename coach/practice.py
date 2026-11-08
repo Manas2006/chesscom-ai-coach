@@ -49,7 +49,7 @@ def puzzle_list(s: CoachSession) -> list[dict]:
 def _moment(s: CoachSession, ref: str):
     t = s.resolve_ref(ref)
     m = s.moment_at(t.game.gid, t.ply.index) if t else None
-    if not m or not m.best_lines:
+    if not m or not m.best_lines or not m.best_lines[0].uci:
         raise KeyError(ref)
     return t, m
 

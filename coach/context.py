@@ -45,10 +45,8 @@ def moment_block(m: CriticalMoment, game: ParsedGame) -> str:
         f"  eval before: {m.eval_before} ({_pct(m.win_before)} win chance) -> after {m.played_san}: {m.eval_after} "
         f"({_pct(m.win_after)}); cost {m.win_drop:.0f} points of win chance",
     ]
-    if m.best_lines:
-        opts = []
-        for i, l in enumerate(m.best_lines, 1):
-            opts.append(f"{i}) {l.san[0]} {l.eval_str} [line: {' '.join(l.san)}]")
+    opts = [f"{i}) {l.san[0]} {l.eval_str} [line: {' '.join(l.san)}]" for i, l in enumerate(m.best_lines, 1) if l.san]
+    if opts:
         lines.append("  engine's top choices: " + "; ".join(opts))
     if m.refutation and m.refutation.san:
         lines.append(f"  opponent's best reply after {m.played_san}: {' '.join(m.refutation.san)} (eval {m.refutation.eval_str})")

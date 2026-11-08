@@ -124,14 +124,14 @@ def _outcome(player_side: dict, opp_side: dict) -> tuple[str, str]:
 
 
 def parse_game(raw: dict, username: str, gid: str) -> ParsedGame:
-    pgn = chess.pgn.read_game(io.StringIO(raw["pgn"]))
+    pgn = chess.pgn.read_game(io.StringIO(raw.get("pgn") or ""))
     if pgn is None:
         raise ValueError(f"unparseable PGN for {raw.get('url')}")
-    w, b = raw.get("white", {}), raw.get("black", {})
-    uname = username.lower()
-    if w.get("username", "").lower() == uname:
+    w, b = raw.get("white") or {}, raw.get("black") or {}
+    uname = (username or "").strip().lower()
+    if uname and (w.get("username") or "").lower() == uname:
         color, me, opp = "white", w, b
-    elif b.get("username", "").lower() == uname:
+    elif uname and (b.get("username") or "").lower() == uname:
         color, me, opp = "black", b, w
     else:
         raise ValueError(f"{username} did not play {raw.get('url')}")
@@ -184,13 +184,13 @@ def parse_game(raw: dict, username: str, gid: str) -> ParsedGame:
         base_s=base,
         inc_s=inc,
         rated=bool(raw.get("rated", False)),
-        white=w.get("username", "?"),
-        black=b.get("username", "?"),
+        white=w.get("username") or "?",
+        black=b.get("username") or "?",
         white_rating=w.get("rating"),
         black_rating=b.get("rating"),
-        player=me.get("username", username),
+        player=me.get("username") or username,
         player_color=color,
-        opponent=opp.get("username", "?"),
+        opponent=opp.get("username") or "?",
         player_rating=me.get("rating"),
         opponent_rating=opp.get("rating"),
         outcome=outcome,

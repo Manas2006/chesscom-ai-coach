@@ -23,7 +23,8 @@ import chess
 
 from .session import CoachSession, clean_san
 
-CITE_RE = re.compile(r"\[\[\s*(G\d+\s+\d+\s*(?:\.\.\.|\.)\s*[^\]\s]+)\s*\]\]")
+# The SAN part is optional ("[[G1 22...]]" is Black's 22nd move) so a bare reference is still checked.
+CITE_RE = re.compile(r"\[\[\s*(G\d+\s+\d+\s*(?:\.\.\.|\.)\s*[^\]\s]*)\s*\]\]")
 # Piece moves, captures, castling and promotions are unambiguous. Bare pawn pushes ("e4") are only
 # treated as moves when written with a move number ("12.e4"), since "e4" is usually a square.
 SAN_RE = re.compile(

@@ -17,16 +17,19 @@ from .service import CoachService
 STATIC = Path(__file__).resolve().parent / "static"
 
 
+UCI = "^[a-h][1-8][a-h][1-8][qrbn]?$"
+
+
 class AnalyzeRequest(BaseModel):
     username: str = Field(..., min_length=2, max_length=40)
     games: int = Field(10, ge=1, le=30)
-    time_class: str = "all"
+    time_class: str = Field("all", pattern="^(all|bullet|blitz|rapid|daily)$")
     demo: bool = False
 
 
 class AttemptRequest(BaseModel):
     ref: str = Field(..., max_length=40)
-    uci: str = Field(..., min_length=4, max_length=5)
+    uci: str = Field(..., pattern=UCI)
 
 
 class HintRequest(BaseModel):
@@ -134,8 +137,6 @@ def create_app(service: CoachService | None = None) -> FastAPI:
         except KeyError:
             raise HTTPException(404, "unknown puzzle")
 
-    UCI = "^[a-h][1-8][a-h][1-8][qrbn]?$"
-
     @app.get("/api/sessions/{sid}/board.svg")
     def board(
         sid: str,
@@ -153,6 +154,8 @@ def create_app(service: CoachService | None = None) -> FastAPI:
             svg = svc.board_svg(sid, game, ply, mode=mode, size=size, attempt=attempt, reply=reply, reveal=reveal, mark=mark)
         except KeyError:
             raise HTTPException(404, "unknown game")
+        except ValueError as exc:
+            raise HTTPException(400, f"bad board request: {exc}")
         return Response(svg, media_type="image/svg+xml", headers={"Cache-Control": "max-age=3600"})
 
     @app.get("/")

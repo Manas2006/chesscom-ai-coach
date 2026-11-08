@@ -33,7 +33,7 @@ docker compose up --build
 |---|---|
 | `make up` | `docker compose up --build` |
 | `make run` | Run locally with uv |
-| `make test` | 50 tests: parsing, engine, verifier, agent loop, streaming and provider wire formats, practice mode, rate limit, HTTP API |
+| `make test` | 160 tests: parsing, engine, motif tags, verifier, agent loop, streaming and provider wire formats, practice mode, rate limit, HTTP API, plus edge cases (mate and stalemate games, daily games, malformed API data, sloppy tool arguments, bad requests) |
 | `make eval` | Grounded vs ungrounded ablation (needs an API key), writes `evals/RESULTS.md` |
 | `make eval-dry` | Exercise the eval harness without an API key |
 

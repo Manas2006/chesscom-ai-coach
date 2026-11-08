@@ -47,12 +47,16 @@ OnText = Callable[[str], None]
 
 
 class Provider(Protocol):
+    """`force_text=True` asks the model to answer in prose without calling tools (used on the last agent round)."""
+
     name: str
     model: str
 
-    def complete(self, system: str, history: list[dict], tools: list[ToolSpec]) -> LLMResponse: ...
+    def complete(self, system: str, history: list[dict], tools: list[ToolSpec], force_text: bool = False) -> LLMResponse: ...
 
-    def stream(self, system: str, history: list[dict], tools: list[ToolSpec], on_text: OnText) -> LLMResponse: ...
+    def stream(
+        self, system: str, history: list[dict], tools: list[ToolSpec], on_text: OnText, force_text: bool = False
+    ) -> LLMResponse: ...
 
 
 def _sse_data(lines):
@@ -73,8 +77,9 @@ def _raise_for(resp: httpx.Response, who: str) -> None:
     if resp.status_code == 200:
         return
     try:
-        detail = resp.json().get("error", {})
-        msg = detail.get("message") if isinstance(detail, dict) else str(detail)
+        data = resp.json()
+        detail = data.get("error", data) if isinstance(data, dict) else data
+        msg = (detail.get("message") or str(detail)) if isinstance(detail, dict) else str(detail)
     except ValueError:
         msg = resp.text[:300]
     raise LLMError(f"{who} API error {resp.status_code}: {msg}")
@@ -94,26 +99,30 @@ class AnthropicProvider:
     @staticmethod
     def to_messages(history: list[dict]) -> list[dict]:
         msgs: list[dict] = []
+
+        def add(role: str, content: list[dict]) -> None:
+            # Anthropic wants alternating roles: a tool-result turn followed by a user text turn
+            # (e.g. "tool budget used up") is one user message with several content blocks.
+            if msgs and msgs[-1]["role"] == role:
+                msgs[-1]["content"].extend(content)
+            else:
+                msgs.append({"role": role, "content": content})
+
         for h in history:
             if h["role"] == "user":
-                msgs.append({"role": "user", "content": h["text"]})
+                add("user", [{"type": "text", "text": h["text"] or "(empty)"}])
             elif h["role"] == "assistant":
                 content: list[dict] = []
                 if h.get("text"):
                     content.append({"type": "text", "text": h["text"]})
-                for tc in h.get("tool_calls", []):
+                for tc in h.get("tool_calls") or []:
                     content.append({"type": "tool_use", "id": tc.id, "name": tc.name, "input": tc.arguments})
-                msgs.append({"role": "assistant", "content": content or [{"type": "text", "text": "(no text)"}]})
+                add("assistant", content or [{"type": "text", "text": "(no text)"}])
             elif h["role"] == "tool":
-                msgs.append(
-                    {
-                        "role": "user",
-                        "content": [{"type": "tool_result", "tool_use_id": r["id"], "content": r["content"]} for r in h["results"]],
-                    }
-                )
+                add("user", [{"type": "tool_result", "tool_use_id": r["id"], "content": r["content"]} for r in h["results"]])
         return msgs
 
-    def _body(self, system: str, history: list[dict], tools: list[ToolSpec]) -> dict:
+    def _body(self, system: str, history: list[dict], tools: list[ToolSpec], force_text: bool = False) -> dict:
         body = {
             "model": self.model,
             "max_tokens": self.max_tokens,
@@ -123,10 +132,12 @@ class AnthropicProvider:
         }
         if tools:
             body["tools"] = [{"name": t.name, "description": t.description, "input_schema": t.parameters} for t in tools]
+            if force_text:
+                body["tool_choice"] = {"type": "none"}
         return body
 
-    def stream(self, system: str, history: list[dict], tools: list[ToolSpec], on_text: OnText) -> LLMResponse:
-        body = self._body(system, history, tools) | {"stream": True}
+    def stream(self, system: str, history: list[dict], tools: list[ToolSpec], on_text: OnText, force_text: bool = False) -> LLMResponse:
+        body = self._body(system, history, tools, force_text) | {"stream": True}
         blocks: dict[int, dict] = {}
         text: list[str] = []
         usage = {"in": 0, "out": 0}
@@ -166,8 +177,8 @@ class AnthropicProvider:
                 calls.append(ToolCall(b["id"], b["name"], args))
         return LLMResponse(text="".join(text), tool_calls=calls, input_tokens=usage["in"], output_tokens=usage["out"])
 
-    def complete(self, system: str, history: list[dict], tools: list[ToolSpec]) -> LLMResponse:
-        body = self._body(system, history, tools)
+    def complete(self, system: str, history: list[dict], tools: list[ToolSpec], force_text: bool = False) -> LLMResponse:
+        body = self._body(system, history, tools, force_text)
         try:
             resp = self.http.post("/v1/messages", json=body)
         except httpx.HTTPError as exc:
@@ -201,11 +212,13 @@ class OpenAIProvider:
             if h["role"] == "user":
                 msgs.append({"role": "user", "content": h["text"]})
             elif h["role"] == "assistant":
-                m: dict = {"role": "assistant", "content": h.get("text") or None}
-                if h.get("tool_calls"):
+                calls = h.get("tool_calls") or []
+                # content may only be null when tool calls are present
+                m: dict = {"role": "assistant", "content": h.get("text") or (None if calls else "")}
+                if calls:
                     m["tool_calls"] = [
                         {"id": tc.id, "type": "function", "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)}}
-                        for tc in h["tool_calls"]
+                        for tc in calls
                     ]
                 msgs.append(m)
             elif h["role"] == "tool":
@@ -213,15 +226,17 @@ class OpenAIProvider:
                     msgs.append({"role": "tool", "tool_call_id": r["id"], "content": r["content"]})
         return msgs
 
-    def _body(self, system: str, history: list[dict], tools: list[ToolSpec]) -> dict:
+    def _body(self, system: str, history: list[dict], tools: list[ToolSpec], force_text: bool = False) -> dict:
         # Reasoning models spend completion tokens on hidden reasoning, hence the headroom.
         body: dict = {"model": self.model, "messages": self.to_messages(system, history), "max_completion_tokens": self.max_tokens * 4}
         if tools:
             body["tools"] = [{"type": "function", "function": {"name": t.name, "description": t.description, "parameters": t.parameters}} for t in tools]
+            if force_text:
+                body["tool_choice"] = "none"
         return body
 
-    def stream(self, system: str, history: list[dict], tools: list[ToolSpec], on_text: OnText) -> LLMResponse:
-        body = self._body(system, history, tools) | {"stream": True, "stream_options": {"include_usage": True}}
+    def stream(self, system: str, history: list[dict], tools: list[ToolSpec], on_text: OnText, force_text: bool = False) -> LLMResponse:
+        body = self._body(system, history, tools, force_text) | {"stream": True, "stream_options": {"include_usage": True}}
         text: list[str] = []
         slots: dict[int, dict] = {}
         usage = {}
@@ -256,15 +271,18 @@ class OpenAIProvider:
             text="".join(text), tool_calls=calls, input_tokens=usage.get("prompt_tokens", 0), output_tokens=usage.get("completion_tokens", 0)
         )
 
-    def complete(self, system: str, history: list[dict], tools: list[ToolSpec]) -> LLMResponse:
-        body = self._body(system, history, tools)
+    def complete(self, system: str, history: list[dict], tools: list[ToolSpec], force_text: bool = False) -> LLMResponse:
+        body = self._body(system, history, tools, force_text)
         try:
             resp = self.http.post("/chat/completions", json=body)
         except httpx.HTTPError as exc:
             raise LLMError(f"OpenAI request failed: {exc}") from exc
         _raise_for(resp, "OpenAI")
         data = resp.json()
-        msg = data["choices"][0]["message"]
+        try:
+            msg = data["choices"][0]["message"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise LLMError("OpenAI returned no choices") from exc
         calls = []
         for tc in msg.get("tool_calls") or []:
             try:
@@ -291,14 +309,19 @@ class ScriptedProvider:
         self.responses = list(responses)
         self.calls: list[dict] = []
 
-    def complete(self, system: str, history: list[dict], tools: list[ToolSpec]) -> LLMResponse:
-        self.calls.append({"system": system, "history": [dict(h) for h in history], "tools": [t.name for t in tools]})
+    def complete(self, system: str, history: list[dict], tools: list[ToolSpec], force_text: bool = False) -> LLMResponse:
+        self.calls.append({"system": system, "history": [dict(h) for h in history], "tools": [t.name for t in tools], "force_text": force_text})
         if not self.responses:
             return LLMResponse(text="(no more scripted responses)")
-        return self.responses.pop(0)
+        resp = self.responses.pop(0)
+        if force_text and resp.tool_calls:
+            # A real provider is told `tool_choice: none` on the last round; mimic that so scripted
+            # runs exercise the same path (text only, tool calls dropped).
+            resp = LLMResponse(text=resp.text, input_tokens=resp.input_tokens, output_tokens=resp.output_tokens)
+        return resp
 
-    def stream(self, system: str, history: list[dict], tools: list[ToolSpec], on_text: OnText) -> LLMResponse:
-        resp = self.complete(system, history, tools)
+    def stream(self, system: str, history: list[dict], tools: list[ToolSpec], on_text: OnText, force_text: bool = False) -> LLMResponse:
+        resp = self.complete(system, history, tools, force_text)
         for i in range(0, len(resp.text), 24):
             on_text(resp.text[i : i + 24])
         return resp
