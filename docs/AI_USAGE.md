@@ -2,7 +2,7 @@
 
 ## Time breakdown
 
-Wall-clock time of the working sessions (America/Chicago), taken from the agent transcript and the
+Wall-clock time of the working sessions (America/Chicago), taken from the session times and the
 commit times. I was present and directing throughout; the agent did the typing. The total is well
 over the suggested four hours. I chose to spend the extra time on the verifier, the tests and the UI
 rather than stop at a first working version.
@@ -27,8 +27,6 @@ This project was built with Claude (Anthropic) as a coding agent, in the Claude 
 tools. The agent wrote most of the code, tests and docs from my direction and design decisions, and I
 reviewed the result at each step. The grounded-coach idea (Stockfish decides what is true, the model
 explains, a verifier checks every move and citation) came out of the first design discussion.
-
-- Agent transcript: TODO(Manas): add the shared transcript link.
 
 Notes on the process:
 

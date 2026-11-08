@@ -162,4 +162,4 @@ docs/           DESIGN.md, AI_USAGE.md, screenshots
 
 ## Time spent and AI usage
 
-See [docs/AI_USAGE.md](docs/AI_USAGE.md) for the time breakdown and agent transcripts.
+See [docs/AI_USAGE.md](docs/AI_USAGE.md) for the time breakdown and how AI tools were used.
