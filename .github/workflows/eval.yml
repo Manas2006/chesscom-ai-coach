@@ -1,0 +1,53 @@
+name: eval
+
+# The grounded-vs-ungrounded ablation needs a real LLM key, so it runs on demand rather than on
+# every push. It uses the repository secret ANTHROPIC_API_KEY (or OPENAI_API_KEY), writes
+# evals/RESULTS.md plus the raw model outputs, and commits them back to the branch it ran on.
+
+on:
+  workflow_dispatch:
+    inputs:
+      games:
+        description: "Games per fixture player"
+        default: "8"
+      repeats:
+        description: "Runs per player (averaged)"
+        default: "2"
+
+permissions:
+  contents: write
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Stockfish
+        run: sudo apt-get update && sudo apt-get install -y stockfish
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run the eval
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          STOCKFISH_PATH: /usr/games/stockfish
+        run: python -m evals.run_eval --games "${{ inputs.games }}" --repeats "${{ inputs.repeats }}"
+      - name: Show the summary
+        run: cat evals/RESULTS.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eval-outputs
+          path: |
+            evals/RESULTS.md
+            evals/results
+            evals/samples
+      - name: Commit the results
+        run: |
+          git config user.name "Manas Pathak"
+          git config user.email "manaspathak11@gmail.com"
+          git add evals/RESULTS.md evals/results evals/samples
+          git commit -m "Eval results: grounded vs ungrounded (workflow run ${{ github.run_number }}, ${{ inputs.repeats }} runs x ${{ inputs.games }} games)" || echo "nothing to commit"
+          git push
