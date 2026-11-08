@@ -118,3 +118,39 @@ def test_rate_limit_protects_public_deployments(service, session, settings):
         assert client.post(f"/api/sessions/{session.sid}/chat", json={"message": "c"}, headers=other).status_code == 200
     finally:
         service.provider, settings.llm_rate_limit_per_hour = old_provider, old_limit
+
+
+def test_truncation_is_reported_by_both_providers():
+    """A reply that hit max_tokens is flagged so the UI can say so instead of showing a cut-off report as finished."""
+    import json
+
+    import httpx
+
+    from coach import agent
+    from coach.llm import AnthropicProvider, OpenAIProvider
+
+    a = AnthropicProvider("k", "m", 100, 5)
+    a.http = httpx.Client(
+        base_url="https://api.anthropic.com",
+        transport=httpx.MockTransport(lambda req: httpx.Response(200, json={"content": [{"type": "text", "text": "half a"}], "stop_reason": "max_tokens", "usage": {"output_tokens": 100}})),
+    )
+    assert a.complete("S", [{"role": "user", "text": "x"}], []).truncated is True
+
+    events = [
+        {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "half a"}},
+        {"type": "message_delta", "delta": {"stop_reason": "max_tokens"}, "usage": {"output_tokens": 100}},
+    ]
+    a.http = httpx.Client(base_url="https://api.anthropic.com", transport=httpx.MockTransport(lambda req: httpx.Response(200, text="".join(f"data: {json.dumps(e)}\n\n" for e in events))))
+    assert a.stream("S", [{"role": "user", "text": "x"}], [], lambda t: None).truncated is True
+
+    o = OpenAIProvider("k", "m", 100, 5)
+    o.http = httpx.Client(base_url="https://api.openai.com/v1", transport=httpx.MockTransport(lambda req: httpx.Response(200, json={"choices": [{"message": {"content": "half a"}, "finish_reason": "length"}], "usage": {}})))
+    assert o.complete("S", [{"role": "user", "text": "x"}], []).truncated is True
+    chunks = [{"choices": [{"delta": {"content": "half a"}, "finish_reason": None}]}, {"choices": [{"delta": {}, "finish_reason": "length"}]}]
+    o.http = httpx.Client(base_url="https://api.openai.com/v1", transport=httpx.MockTransport(lambda req: httpx.Response(200, text="".join(f"data: {json.dumps(c)}\n\n" for c in chunks) + "data: [DONE]\n\n")))
+    assert o.stream("S", [{"role": "user", "text": "x"}], [], lambda t: None).truncated is True
+
+    # A normal stop is not flagged, and the flag rides through the agent result.
+    o.http = httpx.Client(base_url="https://api.openai.com/v1", transport=httpx.MockTransport(lambda req: httpx.Response(200, json={"choices": [{"message": {"content": "done"}, "finish_reason": "stop"}], "usage": {}})))
+    res = agent.run_agent(o, "S", [{"role": "user", "text": "x"}], None, 0, use_tools=False)
+    assert res.truncated is False and res.text == "done"

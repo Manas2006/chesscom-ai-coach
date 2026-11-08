@@ -64,7 +64,7 @@ class Settings:
     openai_model: str = "gpt-5-mini"
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
-    llm_max_tokens: int = 2000
+    llm_max_tokens: int = 8000  # a report is ~600 words; the headroom is for models that spend output tokens on reasoning
     llm_timeout_s: float = 90.0
     max_tool_rounds: int = 6
     llm_rate_limit_per_hour: int = 0  # per client IP; set it for public deployments

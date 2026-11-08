@@ -709,7 +709,7 @@ function renderReport(rep) {
   const u = rep.usage || {};
   $("#report-meta").innerHTML =
     rep.mode === "llm"
-      ? `${esc(rep.model)} · ${rep.latency_s}s · ${(u.input_tokens || 0) + (u.output_tokens || 0)} tokens · ${rep.trace.length} engine tool call${rep.trace.length === 1 ? "" : "s"}${rep.repaired ? " · revised after verification" : ""}${rep.pregenerated ? ` · sample report generated ${esc((rep.generated_at || "").slice(0, 10))}` : ""}`
+      ? `${esc(rep.model)} · ${rep.latency_s}s · ${(u.input_tokens || 0) + (u.output_tokens || 0)} tokens · ${rep.trace.length} engine tool call${rep.trace.length === 1 ? "" : "s"}${rep.repaired ? " · revised after verification" : ""}${rep.pregenerated ? ` · sample report generated ${esc((rep.generated_at || "").slice(0, 10))}` : ""}${rep.truncated ? ` · <span class="c-mistake" title="The model hit its output limit. Regenerate to try again.">cut off at the token limit</span>` : ""}`
       : rep.error ? `<span class="c-mistake">${esc(rep.error)}</span>` : "";
 }
 $("#regen").onclick = () => loadReport(true);

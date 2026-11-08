@@ -34,6 +34,7 @@ class LLMResponse:
     tool_calls: list[ToolCall] = field(default_factory=list)
     input_tokens: int = 0
     output_tokens: int = 0
+    truncated: bool = False  # the model hit max_tokens: the text is cut off, not finished
 
 
 @dataclass
@@ -141,6 +142,7 @@ class AnthropicProvider:
         blocks: dict[int, dict] = {}
         text: list[str] = []
         usage = {"in": 0, "out": 0}
+        truncated = False
         try:
             with self.http.stream("POST", "/v1/messages", json=body) as resp:
                 if resp.status_code != 200:
@@ -163,6 +165,8 @@ class AnthropicProvider:
                             blocks[ev["index"]]["json"] += d.get("partial_json", "")
                     elif kind == "message_delta":
                         usage["out"] = ev.get("usage", {}).get("output_tokens", usage["out"])
+                        if (ev.get("delta") or {}).get("stop_reason") == "max_tokens":
+                            truncated = True
                     elif kind == "error":
                         raise LLMError(f"Anthropic stream error: {ev.get('error', {}).get('message')}")
         except httpx.HTTPError as exc:
@@ -175,7 +179,7 @@ class AnthropicProvider:
                 except ValueError:
                     args = {}
                 calls.append(ToolCall(b["id"], b["name"], args))
-        return LLMResponse(text="".join(text), tool_calls=calls, input_tokens=usage["in"], output_tokens=usage["out"])
+        return LLMResponse(text="".join(text), tool_calls=calls, input_tokens=usage["in"], output_tokens=usage["out"], truncated=truncated)
 
     def complete(self, system: str, history: list[dict], tools: list[ToolSpec], force_text: bool = False) -> LLMResponse:
         body = self._body(system, history, tools, force_text)
@@ -193,6 +197,7 @@ class AnthropicProvider:
             tool_calls=calls,
             input_tokens=usage.get("input_tokens", 0) + usage.get("cache_read_input_tokens", 0) + usage.get("cache_creation_input_tokens", 0),
             output_tokens=usage.get("output_tokens", 0),
+            truncated=data.get("stop_reason") == "max_tokens",
         )
 
 
@@ -239,6 +244,7 @@ class OpenAIProvider:
         body = self._body(system, history, tools, force_text) | {"stream": True, "stream_options": {"include_usage": True}}
         text: list[str] = []
         slots: dict[int, dict] = {}
+        truncated = False
         usage = {}
         try:
             with self.http.stream("POST", "/chat/completions", json=body) as resp:
@@ -252,6 +258,8 @@ class OpenAIProvider:
                         if delta.get("content"):
                             text.append(delta["content"])
                             on_text(delta["content"])
+                        if choice.get("finish_reason") == "length":
+                            truncated = True
                         for tc in delta.get("tool_calls") or []:
                             slot = slots.setdefault(tc.get("index", 0), {"id": "", "name": "", "args": ""})
                             slot["id"] = tc.get("id") or slot["id"]
@@ -268,7 +276,7 @@ class OpenAIProvider:
                 args = {}
             calls.append(ToolCall(s["id"], s["name"], args))
         return LLMResponse(
-            text="".join(text), tool_calls=calls, input_tokens=usage.get("prompt_tokens", 0), output_tokens=usage.get("completion_tokens", 0)
+            text="".join(text), tool_calls=calls, input_tokens=usage.get("prompt_tokens", 0), output_tokens=usage.get("completion_tokens", 0), truncated=truncated
         )
 
     def complete(self, system: str, history: list[dict], tools: list[ToolSpec], force_text: bool = False) -> LLMResponse:
@@ -296,6 +304,7 @@ class OpenAIProvider:
             tool_calls=calls,
             input_tokens=usage.get("prompt_tokens", 0),
             output_tokens=usage.get("completion_tokens", 0),
+            truncated=data["choices"][0].get("finish_reason") == "length",
         )
 
 

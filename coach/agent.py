@@ -250,6 +250,7 @@ class AgentResult:
     input_tokens: int = 0
     output_tokens: int = 0
     rounds: int = 0
+    truncated: bool = False  # the final answer hit the provider's output limit
 
 
 OnEvent = Callable[[dict], None]
@@ -281,6 +282,7 @@ def run_agent(
         history.append({"role": "assistant", "text": resp.text, "tool_calls": resp.tool_calls})
         if not resp.tool_calls or final:
             res.text = resp.text.strip()
+            res.truncated = resp.truncated
             return res
         results = []
         for tc in resp.tool_calls:
@@ -317,6 +319,7 @@ def _respond(
         "verification_before_repair": None,
         "repaired": False,
         "trace": first.trace,
+        "truncated": first.truncated,
         "usage": {"input_tokens": first.input_tokens, "output_tokens": first.output_tokens, "rounds": first.rounds},
     }
     if repair and check["flagged"]:
@@ -331,7 +334,7 @@ def _respond(
         if second.text:
             check2 = verify(second.text, session, context, toolbox.evidence)
             if check2["score"] >= check["score"]:
-                out.update(markdown=second.text, verification=check2, verification_before_repair=check, repaired=True)
+                out.update(markdown=second.text, verification=check2, verification_before_repair=check, repaired=True, truncated=second.truncated)
             out["trace"] = first.trace + second.trace
             out["usage"]["input_tokens"] += second.input_tokens
             out["usage"]["output_tokens"] += second.output_tokens
