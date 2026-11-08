@@ -1,0 +1,60 @@
+{
+  "player": "bobthegreatest123",
+  "generated_at": "2026-11-08T21:12:00Z",
+  "source": "https://chesscom-ai-coach.onrender.com session 1df201c3ed3b (claude-sonnet-5-5 via the live deployment)",
+  "engine": "Stockfish 17.1",
+  "analysis_version": 8,
+  "game_uuids": [
+    "5e8622a9-d7b4-11f1-9db9-d43d3b01000f",
+    "52884654-b5fa-11f1-bb1f-e68c2101000f",
+    "6b8758d6-acbb-11f1-bbdf-8eeeee01000f",
+    "457d1497-aba3-11f1-8cd6-ece1e601000f",
+    "bdb9bfbe-aba0-11f1-9f37-3022bd01000f",
+    "dfd489e8-ab1f-11f1-8acf-f45fe701000f",
+    "c6f569e2-a745-11f1-baf2-8a56cc01000f",
+    "0fc6f3ac-a743-11f1-856c-7c639201000f",
+    "4f5f4d4b-98ee-11f1-90cc-625e5f01000f",
+    "9e7186e2-98ec-11f1-a476-59664c01000f"
+  ],
+  "report": {
+    "markdown": "## The big picture\nYou're 5W 5L, but the engine says you were winning or equal in many of the games you lost. Your middlegame accuracy is 64.9, well below your opening (81.4) and endgame (76.3). The main problem is converting good positions. You have 6 \"slipped while clearly winning\" moments and 10 \"missed a chance to punish\" moments. You also lost on time in 4 of the 10 games (G2, G3, G4, G10).\n\n## Patterns to fix\n\n**1. Moving without a \"what does this leave hanging?\" check**\n- Evidence: [[G5 13.Nf3]] left the bishop on f4 undefended, and the engine's reply Bxf4+ turned a winning position into a lost one. [[G4 13...Bxf6]] left the queen on c7 loose, and it was played in 0.6s with 34s still on the clock. [[G9 19...Nc6]] put a knight on an undefended square. [[G5 20.f5]] was played in 0.8s with 18s left.\n- Why: the tags show `hangs_piece` 4x and `played_quickly` 4x. These were fast, automatic moves, often recaptures or \"natural\" pawn moves, made with time to spare.\n- Habit: before every move, ask \"what does the opponent's best capture or check win?\" Check each of your loose pieces. Take at least 5 seconds, even in bullet.\n\n**2. Skipping captures and checks when you're ahead**\n- Evidence: [[G5 32.Kd2]] ignored Rxd3, which won a bishop for free. [[G1 16.g4]] and [[G1 15.Qe3]] ignored Ne6, which kept a big edge. [[G2 17...Qxg4+]] missed Nf3#, a mate in one.\n- Why: `best_was_capture` appeared 7x, `missed_material_gain` 4x and `missed_mate` once. Three of these came with under 10 seconds left, so panic hid the obvious forcing move.\n- Habit: write down the order \"checks, captures, threats\" and run through it on every move. If the opponent just blundered, look for what their last move left undefended.\n\n**3. Clock management in both directions**\n- Evidence: in [[G10 9.O-O]] you spent 55s, and in [[G10 10.Bh4]] 41s, in a 10-minute game. The game ended on time after only 20 plies. In [[G8 11.Bd3]] you spent 33s. Meanwhile [[G6 37...Kg4]] was a blunder at 46s left.\n- Why: you burn time in the opening, then rush later. Both times the engine's choice was a simple capture, Bxf6.\n- Habit: in rapid, give yourself about 20s per move in the opening and no more. In bullet, keep a 15s buffer so you can still find a one-move mate.\n\n## Moments to replay\n- [[G5 13.Nf3]]: Nb5 or Ne2 kept a winning position. Nf3 dropped the f4 bishop.\n- [[G2 17...Qxg4+]]: Nf3# was mate in one. The check you played let the win slip away.\n- [[G2 10...Qf5]]: Nxf7 forked both rooks. Qe8 was safe. Look for knight forks before you move your queen.\n- [[G9 20...Rxd8]]: you were already worse, but this allowed mate in one. Ba6 or h6 kept the game going. Check the king's safety before you recapture.\n- [[G10 10.Bh4]]: Bxf6 won the bishop pair and kept the advantage. Retreating the bishop gave it away.\n\n## What is working\n- **Comebacks and wins.** You came back from 20% or less in G5 and G7 and still didn't lose, and you won G6 and G7 in rapid. G8 was your cleanest game, at 92.5 accuracy, and you won it as White in the Queen's Gambit Accepted.\n- **Openings.** Your Queen's Gambit opening accuracy was 85.1. You also scored 1W in the Queen's Pawn as Black and 1W in the Sicilian, so your opening play is solid.\n\n## Your plan for the next 7 days\n- Do 10 puzzles a day on \"hanging piece\", \"fork\" and \"mate in 1–2\". Your puzzle rating peaked at 1721, so you can handle these. The goal is to find the check or capture quickly.\n- Add a \"checks, captures, threats\" scan before every move in your next 10 games. If you move in under 2 seconds, stop and check again.\n- Set a clock rule. Spend no more than 20s a move in the first 10 moves of rapid, and keep 15s in reserve in bullet.\n- Review the Baltic Defense line from G10 (Bg5 against ...h6). Find the Bxf6 idea and play it over twice.\n- Try rapid (10+0) rather than bullet for most games. Your rapid games show cleaner play, and bullet produced most of your time losses.\n- Play 3 endgames from a winning position (an extra piece against pawns) against the engine, and practise converting them without hurrying.",
+    "verification": {
+      "score": 1,
+      "checked": 32,
+      "citations": {
+        "total": 17,
+        "ok": 17,
+        "failures": []
+      },
+      "moves": {
+        "total": 15,
+        "ok": 15,
+        "failures": []
+      },
+      "recommendations": {
+        "total": 0,
+        "ok": 0,
+        "failures": []
+      },
+      "evals": {
+        "total": 0,
+        "ok": 0,
+        "failures": []
+      },
+      "flagged": []
+    },
+    "verification_before_repair": null,
+    "repaired": false,
+    "trace": [],
+    "truncated": false,
+    "usage": {
+      "input_tokens": 16411,
+      "output_tokens": 2194,
+      "rounds": 1
+    },
+    "mode": "llm",
+    "provider": "anthropic",
+    "model": "claude-sonnet-5-5",
+    "latency_s": 18.4
+  }
+}
