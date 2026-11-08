@@ -100,6 +100,17 @@ Details, numbers and trade-offs are in **[docs/DESIGN.md](docs/DESIGN.md)**. The
 
 Metrics: citation validity, move legality, recommendation agreement with Stockfish, and evaluation support. Run `make eval` (offline demo games) or `python -m evals.run_eval --live <usernames> --games 8` to produce `evals/RESULTS.md`, with raw outputs in `evals/samples/`. These metrics measure faithfulness to the engine, not coaching quality (see DESIGN.md for what they miss).
 
+**Results** ([evals/RESULTS.md](evals/RESULTS.md), claude-sonnet-5-5, 2 runs x 2 players, produced by the `eval` GitHub Actions workflow):
+
+| | Ungrounded (PGN only) | Grounded, first draft | Grounded + verify/repair |
+|---|---|---|---|
+| Move legality | 0.91 | 1.00 | 1.00 |
+| Recommendation agreement with Stockfish | 0.50 | 0.94 | 1.00 |
+| Citation validity | 1.00 | 0.97 | 1.00 |
+| Overall grounding score | 0.94 | 0.98 | 1.00 |
+
+The honest reading: a strong model given only PGNs rarely invents moves that were never played (citations were all real), but **half of its recommendations were moves Stockfish does not rate**, and about 1 in 11 of the moves it wrote into its analysis were not legal in the position it was discussing. Engine context fixes the legality problem outright and most of the recommendation problem; the verify-and-repair pass closes the rest in these runs. The raw reports for every condition are in `evals/samples/` so you can judge the coaching quality yourself, which these metrics do not measure.
+
 ## Limitations
 
 - The verifier is lexical. It checks moves, citations and numbers, but it cannot check a prose claim like "your bishop was passive". Pattern tags reduce the room for such claims but do not remove it.
